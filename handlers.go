@@ -73,7 +73,7 @@ func (h *Handler) handleGetAllTasks(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) handleCreateTask(w http.ResponseWriter, r *http.Request) {
-	
+
 	defer r.Body.Close()
 	r.Body = http.MaxBytesReader(w, r.Body, 1<<20) // 1MB
 
@@ -142,6 +142,11 @@ func (h *Handler) handleUpdateTaskByID(w http.ResponseWriter, r *http.Request) {
 
 	if err := dec.Decode(&struct{}{}); err != io.EOF {
 		writeError(w, http.StatusBadRequest, "invalid request body")
+		return
+	}
+
+	if req.Title == nil && req.Done == nil {
+		writeError(w, http.StatusBadRequest, "empty request")
 		return
 	}
 
