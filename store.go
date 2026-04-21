@@ -9,6 +9,14 @@ import (
 
 var ErrNotFound = errors.New("task not found")
 
+type TaskStore interface {
+	GetAll() []Task
+	GetByID(int) (Task, error)
+	Create(string) Task
+	Update(int, *string, *bool) (Task, error)
+	Delete(int) error
+}
+
 type Store struct {
 	mu     sync.RWMutex
 	tasks  map[int]Task

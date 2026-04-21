@@ -10,7 +10,7 @@ import (
 )
 
 type Handler struct {
-	store *Store
+	store TaskStore
 }
 
 type SuccessResponse struct {
@@ -48,7 +48,7 @@ func parseIDFromRequest(r *http.Request) (int, error) {
 	return id, nil
 }
 
-func NewHandler(store *Store) *Handler {
+func NewHandler(store TaskStore) *Handler {
 	return &Handler{
 		store: store,
 	}
