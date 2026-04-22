@@ -1,65 +1,67 @@
-package main
+package store
 
 import (
 	"errors"
 	"strings"
 	"sync"
 	"time"
+	
+	"golang/tasks/internal/model"
 )
 
 var ErrNotFound = errors.New("task not found")
 
 type TaskStore interface {
-	GetAll() []Task
-	GetByID(int) (Task, error)
-	Create(string) Task
-	Update(int, *string, *bool) (Task, error)
+	GetAll() []model.Task
+	GetByID(int) (model.Task, error)
+	Create(string) model.Task
+	Update(int, *string, *bool) (model.Task, error)
 	Delete(int) error
 }
 
 type Store struct {
 	mu     sync.RWMutex
-	tasks  map[int]Task
+	tasks  map[int]model.Task
 	nextID int
 }
 
 func NewStore() *Store {
 	return &Store{
-		tasks:  make(map[int]Task),
+		tasks:  make(map[int]model.Task),
 		nextID: 1,
 	}
 }
 
-func (s *Store) GetAll() []Task {
+func (s *Store) GetAll() []model.Task {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
-	tasks := make([]Task, 0, len(s.tasks))
+	tasks := make([]model.Task, 0, len(s.tasks))
 	for _, t := range s.tasks {
 		tasks = append(tasks, t)
 	}
 	return tasks
 }
 
-func (s *Store) GetByID(id int) (Task, error) {
+func (s *Store) GetByID(id int) (model.Task, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
 	task, ok := s.tasks[id]
 	if !ok {
-		return Task{}, ErrNotFound
+		return model.Task{}, ErrNotFound
 	}
 
 	return task, nil
 }
 
-func (s *Store) Create(title string) Task {
+func (s *Store) Create(title string) model.Task {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
 	id := s.nextID
 
-	task := Task{
+	task := model.Task{
 		ID:        id,
 		Title:     strings.TrimSpace(title),
 		Done:      false,
@@ -70,13 +72,13 @@ func (s *Store) Create(title string) Task {
 	return task
 }
 
-func (s *Store) Update(id int, title *string, done *bool) (Task, error) {
+func (s *Store) Update(id int, title *string, done *bool) (model.Task, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
 	task, ok := s.tasks[id]
 	if !ok {
-		return Task{}, ErrNotFound
+		return model.Task{}, ErrNotFound
 	}
 
 	if title != nil {

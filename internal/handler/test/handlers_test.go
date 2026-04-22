@@ -1,6 +1,8 @@
-package main
+package handler_test
 
 import (
+	h "golang/tasks/internal/handler"
+	"golang/tasks/internal/store"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -10,8 +12,8 @@ import (
 )
 
 func setup() *chi.Mux {
-	store := NewStore()
-	handler := NewHandler(store)
+	store := store.NewStore()
+	handler := h.NewHandler(store)
 
 	r := chi.NewRouter()
 	handler.Routes(r)

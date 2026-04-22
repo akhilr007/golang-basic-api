@@ -1,4 +1,4 @@
-package main
+package handler
 
 import (
 	"encoding/json"
@@ -8,11 +8,14 @@ import (
 	"strconv"
 	"strings"
 
+	"golang/tasks/internal/model"
+	"golang/tasks/internal/store"
+
 	"github.com/go-chi/chi/v5"
 )
 
 type Handler struct {
-	store TaskStore
+	store store.TaskStore
 }
 
 type SuccessResponse struct {
@@ -50,7 +53,7 @@ func parseIDFromRequest(r *http.Request) (int, error) {
 	return id, nil
 }
 
-func NewHandler(store TaskStore) *Handler {
+func NewHandler(store store.TaskStore) *Handler {
 	return &Handler{
 		store: store,
 	}
@@ -58,32 +61,32 @@ func NewHandler(store TaskStore) *Handler {
 
 func (h *Handler) Routes(r chi.Router) {
 	
-	r.Get("/", h.handlePing)
+	r.Get("/", h.HandlePing)
 	
 	r.Route("/tasks", func (r chi.Router) {
-		r.Get("/", h.handleGetAllTasks)
-		r.Post("/", h.handleCreateTask)
-		r.Get("/{id}", h.handleGetTaskByID)
-		r.Put("/{id}", h.handleUpdateTaskByID)
-		r.Delete("/{id}", h.handleDeleteTaskByID)
+		r.Get("/", h.HandleGetAllTasks)
+		r.Post("/", h.HandleCreateTask)
+		r.Get("/{id}", h.HandleGetTaskByID)
+		r.Put("/{id}", h.HandleUpdateTaskByID)
+		r.Delete("/{id}", h.HandleDeleteTaskByID)
 	}) 
 }
 
-func (h *Handler) handlePing(w http.ResponseWriter, r *http.Request) {
+func (h *Handler) HandlePing(w http.ResponseWriter, r *http.Request) {
 	writeSuccess(w, http.StatusOK, map[string]string{"status": "healthy"})
 }
 
-func (h *Handler) handleGetAllTasks(w http.ResponseWriter, r *http.Request) {
+func (h *Handler) HandleGetAllTasks(w http.ResponseWriter, r *http.Request) {
 	tasks := h.store.GetAll()
 	writeSuccess(w, http.StatusOK, tasks)
 }
 
-func (h *Handler) handleCreateTask(w http.ResponseWriter, r *http.Request) {
+func (h *Handler) HandleCreateTask(w http.ResponseWriter, r *http.Request) {
 
 	defer r.Body.Close()
 	r.Body = http.MaxBytesReader(w, r.Body, 1<<20) // 1MB
 
-	var req CreateTaskRequest
+	var req model.CreateTaskRequest
 	dec := json.NewDecoder(r.Body)
 	dec.DisallowUnknownFields()
 
@@ -106,7 +109,7 @@ func (h *Handler) handleCreateTask(w http.ResponseWriter, r *http.Request) {
 	writeSuccess(w, http.StatusCreated, task)
 }
 
-func (h *Handler) handleGetTaskByID(w http.ResponseWriter, r *http.Request) {
+func (h *Handler) HandleGetTaskByID(w http.ResponseWriter, r *http.Request) {
 	id, err := parseIDFromRequest(r)
 	if err != nil {
 		writeError(w, http.StatusBadRequest, "invalid task id")
@@ -115,7 +118,7 @@ func (h *Handler) handleGetTaskByID(w http.ResponseWriter, r *http.Request) {
 
 	task, err := h.store.GetByID(id)
 	if err != nil {
-		if errors.Is(err, ErrNotFound) {
+		if errors.Is(err, store.ErrNotFound) {
 			writeError(w, http.StatusNotFound, "task not found")
 		} else {
 			writeError(w, http.StatusInternalServerError, "internal server error")
@@ -126,7 +129,7 @@ func (h *Handler) handleGetTaskByID(w http.ResponseWriter, r *http.Request) {
 	writeSuccess(w, http.StatusOK, task)
 }
 
-func (h *Handler) handleUpdateTaskByID(w http.ResponseWriter, r *http.Request) {
+func (h *Handler) HandleUpdateTaskByID(w http.ResponseWriter, r *http.Request) {
 
 	defer r.Body.Close()
 	r.Body = http.MaxBytesReader(w, r.Body, 1<<20) // 1MB
@@ -137,7 +140,7 @@ func (h *Handler) handleUpdateTaskByID(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	var req UpdateTaskRequest
+	var req model.UpdateTaskRequest
 	dec := json.NewDecoder(r.Body)
 	dec.DisallowUnknownFields()
 
@@ -158,7 +161,7 @@ func (h *Handler) handleUpdateTaskByID(w http.ResponseWriter, r *http.Request) {
 
 	task, err := h.store.Update(id, req.Title, req.Done)
 	if err != nil {
-		if errors.Is(err, ErrNotFound) {
+		if errors.Is(err, store.ErrNotFound) {
 			writeError(w, http.StatusNotFound, "task not found")
 		} else {
 			writeError(w, http.StatusInternalServerError, "internal server error")
@@ -169,7 +172,7 @@ func (h *Handler) handleUpdateTaskByID(w http.ResponseWriter, r *http.Request) {
 	writeSuccess(w, http.StatusOK, task)
 }
 
-func (h *Handler) handleDeleteTaskByID(w http.ResponseWriter, r *http.Request) {
+func (h *Handler) HandleDeleteTaskByID(w http.ResponseWriter, r *http.Request) {
 	id, err := parseIDFromRequest(r)
 	if err != nil {
 		writeError(w, http.StatusBadRequest, "invalid task id")
@@ -178,7 +181,7 @@ func (h *Handler) handleDeleteTaskByID(w http.ResponseWriter, r *http.Request) {
 
 	err = h.store.Delete(id)
 	if err != nil {
-		if errors.Is(err, ErrNotFound) {
+		if errors.Is(err, store.ErrNotFound) {
 			writeError(w, http.StatusNotFound, "task not found")
 		} else {
 			writeError(w, http.StatusInternalServerError, "internal server error")

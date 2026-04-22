@@ -11,20 +11,23 @@ import (
 
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
+	
+	"golang/tasks/internal/store"
+	"golang/tasks/internal/handler"
 )
 
 func main() {
 
 	// get my store
-	store := NewStore()
-	handler := NewHandler(store)
+	store := store.NewStore()
+	handler := handler.NewHandler(store)
 
 	// add a router
 	r := chi.NewRouter()
-	
+
 	r.Use(middleware.Logger)
 	r.Use(middleware.Recoverer)
-	
+
 	handler.Routes(r)
 
 	// how to create a http server in go
@@ -61,4 +64,3 @@ func main() {
 		log.Println("server stopped gracefully")
 	}
 }
-
