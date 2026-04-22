@@ -5,15 +5,17 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+
+	"github.com/go-chi/chi/v5"
 )
 
-func setup() *http.ServeMux {
+func setup() *chi.Mux {
 	store := NewStore()
 	handler := NewHandler(store)
 
-	mux := http.NewServeMux()
-	handler.Routes(mux)
-	return mux
+	r := chi.NewRouter()
+	handler.Routes(r)
+	return r
 }
 
 func TestCreateTask_TableDriven(t *testing.T) {

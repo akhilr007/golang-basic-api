@@ -8,6 +8,9 @@ import (
 	"os/signal"
 	"syscall"
 	"time"
+
+	"github.com/go-chi/chi/v5"
+	"github.com/go-chi/chi/v5/middleware"
 )
 
 func main() {
@@ -17,15 +20,17 @@ func main() {
 	handler := NewHandler(store)
 
 	// add a router
-	mux := http.NewServeMux()
-	handler.Routes(mux)
-
-	loggedMux := logMiddleware(mux)
+	r := chi.NewRouter()
+	
+	r.Use(middleware.Logger)
+	r.Use(middleware.Recoverer)
+	
+	handler.Routes(r)
 
 	// how to create a http server in go
 	server := &http.Server{
 		Addr:              ":8080",
-		Handler:           loggedMux,
+		Handler:           r,
 		ReadTimeout:       5 * time.Second,
 		WriteTimeout:      10 * time.Second,
 		IdleTimeout:       60 * time.Second,
@@ -57,9 +62,3 @@ func main() {
 	}
 }
 
-func logMiddleware(next http.Handler) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		log.Printf("%s %s", r.Method, r.URL.Path)
-		next.ServeHTTP(w, r)
-	})
-}

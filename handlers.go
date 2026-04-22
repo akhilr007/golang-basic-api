@@ -7,6 +7,8 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+
+	"github.com/go-chi/chi/v5"
 )
 
 type Handler struct {
@@ -54,13 +56,17 @@ func NewHandler(store TaskStore) *Handler {
 	}
 }
 
-func (h *Handler) Routes(mux *http.ServeMux) {
-	mux.HandleFunc("GET /ping", h.handlePing)
-	mux.HandleFunc("GET /tasks", h.handleGetAllTasks)
-	mux.HandleFunc("POST /tasks", h.handleCreateTask)
-	mux.HandleFunc("GET /tasks/{id}", h.handleGetTaskByID)
-	mux.HandleFunc("PUT /tasks/{id}", h.handleUpdateTaskByID)
-	mux.HandleFunc("DELETE /tasks/{id}", h.handleDeleteTaskByID)
+func (h *Handler) Routes(r chi.Router) {
+	
+	r.Get("/", h.handlePing)
+	
+	r.Route("/tasks", func (r chi.Router) {
+		r.Get("/", h.handleGetAllTasks)
+		r.Post("/", h.handleCreateTask)
+		r.Get("/{id}", h.handleGetTaskByID)
+		r.Put("/{id}", h.handleUpdateTaskByID)
+		r.Delete("/{id}", h.handleDeleteTaskByID)
+	}) 
 }
 
 func (h *Handler) handlePing(w http.ResponseWriter, r *http.Request) {
