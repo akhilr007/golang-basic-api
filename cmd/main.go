@@ -12,6 +12,7 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
 
+	"github.com/akhilr007/tasks/internal/config"
 	"github.com/akhilr007/tasks/internal/db"
 	"github.com/akhilr007/tasks/internal/handler"
 	"github.com/akhilr007/tasks/internal/store"
@@ -19,9 +20,9 @@ import (
 
 func main() {
 	
-	dsn := "postgres://appuser:apppass@localhost:5432/tasks_db?sslmode=disable"
+	cfg := config.Load()
 	
-	pool, err := db.NewPool(dsn)
+	pool, err := db.NewPool(cfg.DB.URL)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -35,7 +36,6 @@ func main() {
 
 	// add a router
 	r := chi.NewRouter()
-
 	r.Use(middleware.Logger)
 	r.Use(middleware.Recoverer)
 
@@ -43,7 +43,7 @@ func main() {
 
 	// how to create a http server in go
 	server := &http.Server{
-		Addr:              ":8080",
+		Addr:              ":" + cfg.Server.Port,
 		Handler:           r,
 		ReadTimeout:       5 * time.Second,
 		WriteTimeout:      10 * time.Second,

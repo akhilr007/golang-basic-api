@@ -1,0 +1,3 @@
+# .envrc.example
+export PORT=8080
+export DB_URL=postgres://appuser:apppass@localhost:5432/tasks_db?sslmode=disable
