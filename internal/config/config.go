@@ -8,6 +8,7 @@ import (
 type Config struct {
 	Server ServerConfig
 	DB     DBConfig
+	Logger LoggerConfig
 }
 
 type ServerConfig struct {
@@ -18,6 +19,10 @@ type DBConfig struct {
 	URL string
 }
 
+type LoggerConfig struct {
+	Level string
+}
+
 func Load() *Config {
 	return &Config{
 		Server: ServerConfig{
@@ -25,6 +30,9 @@ func Load() *Config {
 		},
 		DB: DBConfig{
 			URL: mustGetEnv("DB_URL"),
+		},
+		Logger: LoggerConfig{
+			Level: getEnv("LOG_LEVEL", "info"),
 		},
 	}
 }

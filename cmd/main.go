@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"log"
 	"net/http"
 	"os"
 	"os/signal"
@@ -15,24 +14,27 @@ import (
 	"github.com/akhilr007/tasks/internal/config"
 	"github.com/akhilr007/tasks/internal/db"
 	"github.com/akhilr007/tasks/internal/handler"
+	"github.com/akhilr007/tasks/internal/logger"
 	"github.com/akhilr007/tasks/internal/store"
 )
 
 func main() {
-	
+
 	cfg := config.Load()
-	
+
+	log := logger.New(cfg.Logger)
+
 	pool, err := db.NewPool(cfg.DB.URL)
 	if err != nil {
-		log.Fatal(err)
+		log.Error("failed to initialize db pool", "error", err)
+		os.Exit(1)
 	}
 	defer pool.Close()
-	
-	
+
 	// get my store
 	// store := store.NewStore()
 	pgStore := store.NewPGStore(pool)
-	handler := handler.NewHandler(pgStore)
+	handler := handler.NewHandler(pgStore, log)
 
 	// add a router
 	r := chi.NewRouter()
@@ -53,9 +55,9 @@ func main() {
 	}
 
 	go func() {
-		log.Printf("Tasks api running on %s", server.Addr)
+		log.Info("Tasks api running", "addr", server.Addr)
 		if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-			log.Fatalf("listen error: %v", err)
+			log.Error("listen error", "error", err)
 		}
 	}()
 
@@ -64,14 +66,14 @@ func main() {
 
 	<-stop
 
-	log.Println("Shutting down server...")
+	log.Info("Shutting down server...")
 
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
 	if err := server.Shutdown(ctx); err != nil {
-		log.Printf("shutdown error: %v", err)
+		log.Error("shutdown error", "error", err)
 	} else {
-		log.Println("server stopped gracefully")
+		log.Info("server stopped gracefully")
 	}
 }

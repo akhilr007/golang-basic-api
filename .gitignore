@@ -28,7 +28,7 @@ vendor/
 !.env.example
 
 .envrc
-.envrc.*
+# .envrc.*
 
 # ================================
 # IDE / EDITOR

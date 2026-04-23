@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"io"
+	"log/slog"
 	"net/http"
 	"strconv"
 	"strings"
@@ -17,7 +18,8 @@ import (
 const errInternal = "internal server error"
 
 type Handler struct {
-	store store.TaskStore
+	store  store.TaskStore
+	logger *slog.Logger
 }
 
 type SuccessResponse struct {
@@ -57,9 +59,10 @@ func parseIDFromRequest(r *http.Request) (int, error) {
 	return id, nil
 }
 
-func NewHandler(store store.TaskStore) *Handler {
+func NewHandler(store store.TaskStore, log *slog.Logger) *Handler {
 	return &Handler{
-		store: store,
+		store:  store,
+		logger: log,
 	}
 }
 
@@ -77,12 +80,16 @@ func (h *Handler) Routes(r chi.Router) {
 }
 
 func (h *Handler) HandlePing(w http.ResponseWriter, r *http.Request) {
+	h.logger.Info("health check")
 	writeSuccess(w, http.StatusOK, map[string]string{"status": "healthy"})
 }
 
 func (h *Handler) HandleGetAllTasks(w http.ResponseWriter, r *http.Request) {
+	log := h.logger.With("method", r.Method, "path", r.URL.Path)
+
 	tasks, err := h.store.GetAll(r.Context())
 	if err != nil {
+		log.Error("failed to fetch tasks", "error", err)
 		writeError(w, http.StatusInternalServerError, errInternal)
 		return
 	}
@@ -90,15 +97,19 @@ func (h *Handler) HandleGetAllTasks(w http.ResponseWriter, r *http.Request) {
 	if tasks == nil {
 		tasks = []model.Task{}
 	}
+
+	log.Info("fetched tasks", "count", len(tasks))
 	writeSuccess(w, http.StatusOK, tasks)
 }
 
 func (h *Handler) HandleCreateTask(w http.ResponseWriter, r *http.Request) {
+	log := h.logger.With("method", r.Method, "path", r.URL.Path)
 
 	defer r.Body.Close()
-	r.Body = http.MaxBytesReader(w, r.Body, 1<<20) // 1MB
+	r.Body = http.MaxBytesReader(w, r.Body, 1<<20)
 
 	if !strings.HasPrefix(r.Header.Get("Content-Type"), "application/json") {
+		log.Warn("invalid content type", "content_type", r.Header.Get("Content-Type"))
 		writeError(w, http.StatusUnsupportedMediaType, "content type must be application/json")
 		return
 	}
@@ -108,31 +119,40 @@ func (h *Handler) HandleCreateTask(w http.ResponseWriter, r *http.Request) {
 	dec.DisallowUnknownFields()
 
 	if err := dec.Decode(&req); err != nil {
+		log.Warn("invalid request body", "error", err)
 		writeError(w, http.StatusBadRequest, "invalid request body")
 		return
 	}
 
 	if err := dec.Decode(&struct{}{}); err != io.EOF {
+		log.Warn("extra data in request body")
 		writeError(w, http.StatusBadRequest, "invalid request body")
 		return
 	}
 
 	if strings.TrimSpace(req.Title) == "" {
+		log.Warn("empty title provided")
 		writeError(w, http.StatusBadRequest, "title is required")
 		return
 	}
 
 	task, err := h.store.Create(r.Context(), req.Title)
 	if err != nil {
+		log.Error("failed to create task", "error", err)
 		writeError(w, http.StatusInternalServerError, errInternal)
 		return
 	}
+
+	log.Info("task created", "task_id", task.ID)
 	writeSuccess(w, http.StatusCreated, task)
 }
 
 func (h *Handler) HandleGetTaskByID(w http.ResponseWriter, r *http.Request) {
+	log := h.logger.With("method", r.Method, "path", r.URL.Path)
+
 	id, err := parseIDFromRequest(r)
 	if err != nil {
+		log.Warn("invalid task id")
 		writeError(w, http.StatusBadRequest, "invalid task id")
 		return
 	}
@@ -140,28 +160,34 @@ func (h *Handler) HandleGetTaskByID(w http.ResponseWriter, r *http.Request) {
 	task, err := h.store.GetByID(r.Context(), id)
 	if err != nil {
 		if errors.Is(err, store.ErrNotFound) {
+			log.Info("task not found", "task_id", id)
 			writeError(w, http.StatusNotFound, store.ErrNotFound.Error())
 		} else {
+			log.Error("failed to fetch task", "task_id", id, "error", err)
 			writeError(w, http.StatusInternalServerError, errInternal)
 		}
 		return
 	}
 
+	log.Info("task fetched", "task_id", id)
 	writeSuccess(w, http.StatusOK, task)
 }
 
 func (h *Handler) HandleUpdateTaskByID(w http.ResponseWriter, r *http.Request) {
+	log := h.logger.With("method", r.Method, "path", r.URL.Path)
 
 	defer r.Body.Close()
-	r.Body = http.MaxBytesReader(w, r.Body, 1<<20) // 1MB
+	r.Body = http.MaxBytesReader(w, r.Body, 1<<20)
 
 	if !strings.HasPrefix(r.Header.Get("Content-Type"), "application/json") {
+		log.Warn("invalid content type")
 		writeError(w, http.StatusUnsupportedMediaType, "content type must be application/json")
 		return
 	}
 
 	id, err := parseIDFromRequest(r)
 	if err != nil {
+		log.Warn("invalid task id")
 		writeError(w, http.StatusBadRequest, "invalid task id")
 		return
 	}
@@ -171,16 +197,19 @@ func (h *Handler) HandleUpdateTaskByID(w http.ResponseWriter, r *http.Request) {
 	dec.DisallowUnknownFields()
 
 	if err := dec.Decode(&req); err != nil {
+		log.Warn("invalid request body", "error", err)
 		writeError(w, http.StatusBadRequest, "invalid request body")
 		return
 	}
 
 	if err := dec.Decode(&struct{}{}); err != io.EOF {
+		log.Warn("extra data in request body")
 		writeError(w, http.StatusBadRequest, "invalid request body")
 		return
 	}
 
 	if req.Title == nil && req.Done == nil {
+		log.Warn("empty update request", "task_id", id)
 		writeError(w, http.StatusBadRequest, "empty request")
 		return
 	}
@@ -188,19 +217,25 @@ func (h *Handler) HandleUpdateTaskByID(w http.ResponseWriter, r *http.Request) {
 	task, err := h.store.Update(r.Context(), id, req.Title, req.Done)
 	if err != nil {
 		if errors.Is(err, store.ErrNotFound) {
+			log.Info("task not found for update", "task_id", id)
 			writeError(w, http.StatusNotFound, store.ErrNotFound.Error())
 		} else {
+			log.Error("failed to update task", "task_id", id, "error", err)
 			writeError(w, http.StatusInternalServerError, errInternal)
 		}
 		return
 	}
 
+	log.Info("task updated", "task_id", id)
 	writeSuccess(w, http.StatusOK, task)
 }
 
 func (h *Handler) HandleDeleteTaskByID(w http.ResponseWriter, r *http.Request) {
+	log := h.logger.With("method", r.Method, "path", r.URL.Path)
+
 	id, err := parseIDFromRequest(r)
 	if err != nil {
+		log.Warn("invalid task id")
 		writeError(w, http.StatusBadRequest, "invalid task id")
 		return
 	}
@@ -208,12 +243,15 @@ func (h *Handler) HandleDeleteTaskByID(w http.ResponseWriter, r *http.Request) {
 	err = h.store.Delete(r.Context(), id)
 	if err != nil {
 		if errors.Is(err, store.ErrNotFound) {
+			log.Info("task not found for delete", "task_id", id)
 			writeError(w, http.StatusNotFound, store.ErrNotFound.Error())
 		} else {
+			log.Error("failed to delete task", "task_id", id, "error", err)
 			writeError(w, http.StatusInternalServerError, errInternal)
 		}
 		return
 	}
 
+	log.Info("task deleted", "task_id", id)
 	w.WriteHeader(http.StatusNoContent)
 }
