@@ -1,8 +1,8 @@
 package handler_test
 
 import (
-	h "golang/tasks/internal/handler"
-	"golang/tasks/internal/store"
+	h "github.com/akhilr007/tasks/internal/handler"
+	"github.com/akhilr007/tasks/internal/store"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -12,8 +12,8 @@ import (
 )
 
 func setup() *chi.Mux {
-	store := store.NewStore()
-	handler := h.NewHandler(store)
+	s := store.NewStore()
+	handler := h.NewHandler(s)
 
 	r := chi.NewRouter()
 	handler.Routes(r)
@@ -109,6 +109,7 @@ func TestUpdateTask_TableDriven(t *testing.T) {
 
 			
 			req = httptest.NewRequest(http.MethodPut, "/tasks/1", strings.NewReader(tt.body))
+			req.Header.Set("Content-Type", "application/json")
 			rr = httptest.NewRecorder()
 
 			mux.ServeHTTP(rr, req)

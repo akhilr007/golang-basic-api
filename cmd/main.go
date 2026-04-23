@@ -11,16 +11,27 @@ import (
 
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
-	
-	"golang/tasks/internal/store"
-	"golang/tasks/internal/handler"
+
+	"github.com/akhilr007/tasks/internal/db"
+	"github.com/akhilr007/tasks/internal/handler"
+	"github.com/akhilr007/tasks/internal/store"
 )
 
 func main() {
-
+	
+	dsn := "postgres://appuser:apppass@localhost:5432/tasks_db?sslmode=disable"
+	
+	pool, err := db.NewPool(dsn)
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer pool.Close()
+	
+	
 	// get my store
-	store := store.NewStore()
-	handler := handler.NewHandler(store)
+	// store := store.NewStore()
+	pgStore := store.NewPGStore(pool)
+	handler := handler.NewHandler(pgStore)
 
 	// add a router
 	r := chi.NewRouter()

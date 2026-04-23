@@ -1,22 +1,23 @@
 package store
 
 import (
+	"context"
 	"errors"
 	"strings"
 	"sync"
 	"time"
-	
-	"golang/tasks/internal/model"
+
+	"github.com/akhilr007/tasks/internal/model"
 )
 
 var ErrNotFound = errors.New("task not found")
 
 type TaskStore interface {
-	GetAll() []model.Task
-	GetByID(int) (model.Task, error)
-	Create(string) model.Task
-	Update(int, *string, *bool) (model.Task, error)
-	Delete(int) error
+	GetAll(context.Context) ([]model.Task, error)
+	GetByID(context.Context, int) (model.Task, error)
+	Create(context.Context, string) (model.Task, error)
+	Update(context.Context, int, *string, *bool) (model.Task, error)
+	Delete(context.Context, int) error
 }
 
 type Store struct {
@@ -32,7 +33,7 @@ func NewStore() *Store {
 	}
 }
 
-func (s *Store) GetAll() []model.Task {
+func (s *Store) GetAll(ctx context.Context) ([]model.Task, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
@@ -40,10 +41,10 @@ func (s *Store) GetAll() []model.Task {
 	for _, t := range s.tasks {
 		tasks = append(tasks, t)
 	}
-	return tasks
+	return tasks, nil
 }
 
-func (s *Store) GetByID(id int) (model.Task, error) {
+func (s *Store) GetByID(ctx context.Context, id int) (model.Task, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
@@ -55,7 +56,7 @@ func (s *Store) GetByID(id int) (model.Task, error) {
 	return task, nil
 }
 
-func (s *Store) Create(title string) model.Task {
+func (s *Store) Create(ctx context.Context, title string) (model.Task, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
@@ -69,10 +70,10 @@ func (s *Store) Create(title string) model.Task {
 	}
 	s.tasks[id] = task
 	s.nextID++
-	return task
+	return task, nil
 }
 
-func (s *Store) Update(id int, title *string, done *bool) (model.Task, error) {
+func (s *Store) Update(ctx context.Context, id int, title *string, done *bool) (model.Task, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
@@ -92,7 +93,7 @@ func (s *Store) Update(id int, title *string, done *bool) (model.Task, error) {
 	return task, nil
 }
 
-func (s *Store) Delete(id int) error {
+func (s *Store) Delete(ctx context.Context, id int) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 

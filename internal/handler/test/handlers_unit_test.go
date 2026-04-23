@@ -1,57 +1,60 @@
 package handler_test
 
 import (
+	"context"
 	"errors"
-	h "golang/tasks/internal/handler"
-	"golang/tasks/internal/model"
-	"golang/tasks/internal/store"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
+
+	h "github.com/akhilr007/tasks/internal/handler"
+	"github.com/akhilr007/tasks/internal/model"
+	"github.com/akhilr007/tasks/internal/store"
+	"github.com/go-chi/chi/v5"
 )
 
 type MockStore struct {
-	GetAllFunc  func() []model.Task
-	GetByIDFunc func(int) (model.Task, error)
-	CreateFunc  func(string) model.Task
-	UpdateFunc  func(int, *string, *bool) (model.Task, error)
-	DeleteFunc  func(int) error
+	GetAllFunc  func(ctx context.Context) ([]model.Task, error)
+	GetByIDFunc func(ctx context.Context, id int) (model.Task, error)
+	CreateFunc  func(ctx context.Context, title string) (model.Task, error)
+	UpdateFunc  func(ctx context.Context, id int, title *string, done *bool) (model.Task, error)
+	DeleteFunc  func(ctx context.Context, id int) error
 }
 
 // ---------- Safe implementations ----------
 
-func (m *MockStore) GetAll() []model.Task {
+func (m *MockStore) GetAll(ctx context.Context) ([]model.Task, error) {
 	if m.GetAllFunc != nil {
-		return m.GetAllFunc()
+		return m.GetAllFunc(ctx)
 	}
 	panic("GetAllFunc not implemented")
 }
 
-func (m *MockStore) GetByID(id int) (model.Task, error) {
+func (m *MockStore) GetByID(ctx context.Context, id int) (model.Task, error) {
 	if m.GetByIDFunc != nil {
-		return m.GetByIDFunc(id)
+		return m.GetByIDFunc(ctx, id)
 	}
 	return model.Task{}, errors.New("GetByIDFunc not implemented")
 }
 
-func (m *MockStore) Create(title string) model.Task {
+func (m *MockStore) Create(ctx context.Context, title string) (model.Task, error) {
 	if m.CreateFunc != nil {
-		return m.CreateFunc(title)
+		return m.CreateFunc(ctx, title)
 	}
 	panic("CreateFunc not implemented")
 }
 
-func (m *MockStore) Update(id int, title *string, done *bool) (model.Task, error) {
+func (m *MockStore) Update(ctx context.Context, id int, title *string, done *bool) (model.Task, error) {
 	if m.UpdateFunc != nil {
-		return m.UpdateFunc(id, title, done)
+		return m.UpdateFunc(ctx, id, title, done)
 	}
 	return model.Task{}, errors.New("UpdateFunc not implemented")
 }
 
-func (m *MockStore) Delete(id int) error {
+func (m *MockStore) Delete(ctx context.Context, id int) error {
 	if m.DeleteFunc != nil {
-		return m.DeleteFunc(id)
+		return m.DeleteFunc(ctx, id)
 	}
 	return errors.New("DeleteFunc not implemented")
 }
@@ -60,22 +63,28 @@ func (m *MockStore) Delete(id int) error {
 
 func newMockStore() *MockStore {
 	return &MockStore{
-		GetAllFunc: func() []model.Task {
-			return []model.Task{}
+		GetAllFunc: func(ctx context.Context) ([]model.Task, error) {
+			return []model.Task{}, nil
 		},
-		GetByIDFunc: func(id int) (model.Task, error) {
+		GetByIDFunc: func(ctx context.Context, id int) (model.Task, error) {
 			return model.Task{}, nil
 		},
-		CreateFunc: func(title string) model.Task {
-			return model.Task{ID: 1, Title: title}
+		CreateFunc: func(ctx context.Context, title string) (model.Task, error) {
+			return model.Task{ID: 1, Title: title}, nil
 		},
-		UpdateFunc: func(id int, title *string, done *bool) (model.Task, error) {
+		UpdateFunc: func(ctx context.Context, id int, title *string, done *bool) (model.Task, error) {
 			return model.Task{ID: id}, nil
 		},
-		DeleteFunc: func(id int) error {
+		DeleteFunc: func(ctx context.Context, id int) error {
 			return nil
 		},
 	}
+}
+
+func addChiParam(r *http.Request, key, value string) *http.Request {
+	routeCtx := chi.NewRouteContext()
+	routeCtx.URLParams.Add(key, value)
+	return r.WithContext(context.WithValue(r.Context(), chi.RouteCtxKey, routeCtx))
 }
 
 // ---------- CREATE ----------
@@ -92,8 +101,8 @@ func TestHandleCreateTask(t *testing.T) {
 			body: `{"title":"new task"}`,
 			mock: func() store.TaskStore {
 				m := newMockStore()
-				m.CreateFunc = func(title string) model.Task {
-					return model.Task{ID: 1, Title: title}
+				m.CreateFunc = func(ctx context.Context, title string) (model.Task, error) {
+					return model.Task{ID: 1, Title: title}, nil
 				}
 				return m
 			},
@@ -148,8 +157,8 @@ func TestHandleGetTaskByID(t *testing.T) {
 			id:   "1",
 			mock: func() store.TaskStore {
 				m := newMockStore()
-				m.GetByIDFunc = func(id int) (model.Task, error) {
-					return model.Task{ID: 1, Title: "Task"}, nil
+				m.GetByIDFunc = func(ctx context.Context, id int) (model.Task, error) {
+					return model.Task{ID: 1}, nil
 				}
 				return m
 			},
@@ -160,8 +169,8 @@ func TestHandleGetTaskByID(t *testing.T) {
 			id:   "1",
 			mock: func() store.TaskStore {
 				m := newMockStore()
-				m.GetByIDFunc = func(id int) (model.Task, error) {
-					return model.Task{}, store.ErrNotFound
+				m.GetByIDFunc = func(ctx context.Context, id int) (model.Task, error) {
+					return model.Task{}, store.ErrNotFound 
 				}
 				return m
 			},
@@ -182,10 +191,11 @@ func TestHandleGetTaskByID(t *testing.T) {
 			handler := h.NewHandler(tt.mock())
 
 			req := httptest.NewRequest(http.MethodGet, "/tasks/"+tt.id, nil)
-			req.SetPathValue("id", tt.id)
+			req = addChiParam(req, "id", tt.id)
 
 			rr := httptest.NewRecorder()
 			handler.HandleGetTaskByID(rr, req)
+		
 
 			if rr.Code != tt.wantStatus {
 				t.Errorf("expected %d, got %d", tt.wantStatus, rr.Code)
@@ -210,8 +220,8 @@ func TestHandleUpdateTaskByID(t *testing.T) {
 			body: `{"title":"updated"}`,
 			mock: func() store.TaskStore {
 				m := newMockStore()
-				m.UpdateFunc = func(id int, title *string, done *bool) (model.Task, error) {
-					return model.Task{ID: id, Title: *title}, nil
+				m.UpdateFunc = func(ctx context.Context, id int, title *string, done *bool) (model.Task, error) {
+					return model.Task{ID: id}, nil
 				}
 				return m
 			},
@@ -223,8 +233,8 @@ func TestHandleUpdateTaskByID(t *testing.T) {
 			body: `{"done":true}`,
 			mock: func() store.TaskStore {
 				m := newMockStore()
-				m.UpdateFunc = func(id int, title *string, done *bool) (model.Task, error) {
-					return model.Task{ID: id, Done: *done}, nil
+				m.UpdateFunc = func(ctx context.Context, id int, title *string, done *bool) (model.Task, error) {
+					return model.Task{ID: id}, nil
 				}
 				return m
 			},
@@ -236,7 +246,7 @@ func TestHandleUpdateTaskByID(t *testing.T) {
 			body: `{"done":true}`,
 			mock: func() store.TaskStore {
 				m := newMockStore()
-				m.UpdateFunc = func(id int, title *string, done *bool) (model.Task, error) {
+				m.UpdateFunc = func(ctx context.Context, id int, title *string, done *bool) (model.Task, error) {
 					return model.Task{}, store.ErrNotFound
 				}
 				return m
@@ -260,7 +270,7 @@ func TestHandleUpdateTaskByID(t *testing.T) {
 
 			req := httptest.NewRequest(http.MethodPut, "/tasks/"+tt.id, strings.NewReader(tt.body))
 			req.Header.Set("Content-Type", "application/json")
-			req.SetPathValue("id", tt.id)
+			req = addChiParam(req, "id", tt.id)
 
 			rr := httptest.NewRecorder()
 			handler.HandleUpdateTaskByID(rr, req)
@@ -286,7 +296,7 @@ func TestHandleDeleteTaskByID(t *testing.T) {
 			id:   "1",
 			mock: func() store.TaskStore {
 				m := newMockStore()
-				m.DeleteFunc = func(id int) error {
+				m.DeleteFunc = func(ctx context.Context, id int) error {
 					return nil
 				}
 				return m
@@ -298,7 +308,7 @@ func TestHandleDeleteTaskByID(t *testing.T) {
 			id:   "1",
 			mock: func() store.TaskStore {
 				m := newMockStore()
-				m.DeleteFunc = func(id int) error {
+				m.DeleteFunc = func(ctx context.Context, id int) error {
 					return store.ErrNotFound
 				}
 				return m
@@ -320,7 +330,7 @@ func TestHandleDeleteTaskByID(t *testing.T) {
 			handler := h.NewHandler(tt.mock())
 
 			req := httptest.NewRequest(http.MethodDelete, "/tasks/"+tt.id, nil)
-			req.SetPathValue("id", tt.id)
+			req = addChiParam(req, "id", tt.id)
 
 			rr := httptest.NewRecorder()
 			handler.HandleDeleteTaskByID(rr, req)

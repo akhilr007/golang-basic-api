@@ -8,11 +8,13 @@ import (
 	"strconv"
 	"strings"
 
-	"golang/tasks/internal/model"
-	"golang/tasks/internal/store"
+	"github.com/akhilr007/tasks/internal/model"
+	"github.com/akhilr007/tasks/internal/store"
 
 	"github.com/go-chi/chi/v5"
 )
+
+const errInternal = "internal server error"
 
 type Handler struct {
 	store store.TaskStore
@@ -45,7 +47,9 @@ func writeSuccess(w http.ResponseWriter, status int, data any) {
 }
 
 func parseIDFromRequest(r *http.Request) (int, error) {
-	id, err := strconv.Atoi(r.PathValue("id"))
+	idStr := chi.URLParam(r, "id")
+
+	id, err := strconv.Atoi(idStr)
 	if err != nil || id <= 0 {
 		return 0, errors.New("invalid id")
 	}
@@ -60,16 +64,16 @@ func NewHandler(store store.TaskStore) *Handler {
 }
 
 func (h *Handler) Routes(r chi.Router) {
-	
-	r.Get("/", h.HandlePing)
-	
-	r.Route("/tasks", func (r chi.Router) {
+
+	r.Get("/health", h.HandlePing)
+
+	r.Route("/tasks", func(r chi.Router) {
 		r.Get("/", h.HandleGetAllTasks)
 		r.Post("/", h.HandleCreateTask)
 		r.Get("/{id}", h.HandleGetTaskByID)
 		r.Put("/{id}", h.HandleUpdateTaskByID)
 		r.Delete("/{id}", h.HandleDeleteTaskByID)
-	}) 
+	})
 }
 
 func (h *Handler) HandlePing(w http.ResponseWriter, r *http.Request) {
@@ -77,7 +81,15 @@ func (h *Handler) HandlePing(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) HandleGetAllTasks(w http.ResponseWriter, r *http.Request) {
-	tasks := h.store.GetAll()
+	tasks, err := h.store.GetAll(r.Context())
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, errInternal)
+		return
+	}
+
+	if tasks == nil {
+		tasks = []model.Task{}
+	}
 	writeSuccess(w, http.StatusOK, tasks)
 }
 
@@ -85,6 +97,11 @@ func (h *Handler) HandleCreateTask(w http.ResponseWriter, r *http.Request) {
 
 	defer r.Body.Close()
 	r.Body = http.MaxBytesReader(w, r.Body, 1<<20) // 1MB
+
+	if !strings.HasPrefix(r.Header.Get("Content-Type"), "application/json") {
+		writeError(w, http.StatusUnsupportedMediaType, "content type must be application/json")
+		return
+	}
 
 	var req model.CreateTaskRequest
 	dec := json.NewDecoder(r.Body)
@@ -105,7 +122,11 @@ func (h *Handler) HandleCreateTask(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	task := h.store.Create(req.Title)
+	task, err := h.store.Create(r.Context(), req.Title)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, errInternal)
+		return
+	}
 	writeSuccess(w, http.StatusCreated, task)
 }
 
@@ -116,12 +137,12 @@ func (h *Handler) HandleGetTaskByID(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	task, err := h.store.GetByID(id)
+	task, err := h.store.GetByID(r.Context(), id)
 	if err != nil {
 		if errors.Is(err, store.ErrNotFound) {
-			writeError(w, http.StatusNotFound, "task not found")
+			writeError(w, http.StatusNotFound, store.ErrNotFound.Error())
 		} else {
-			writeError(w, http.StatusInternalServerError, "internal server error")
+			writeError(w, http.StatusInternalServerError, errInternal)
 		}
 		return
 	}
@@ -133,6 +154,11 @@ func (h *Handler) HandleUpdateTaskByID(w http.ResponseWriter, r *http.Request) {
 
 	defer r.Body.Close()
 	r.Body = http.MaxBytesReader(w, r.Body, 1<<20) // 1MB
+
+	if !strings.HasPrefix(r.Header.Get("Content-Type"), "application/json") {
+		writeError(w, http.StatusUnsupportedMediaType, "content type must be application/json")
+		return
+	}
 
 	id, err := parseIDFromRequest(r)
 	if err != nil {
@@ -159,12 +185,12 @@ func (h *Handler) HandleUpdateTaskByID(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	task, err := h.store.Update(id, req.Title, req.Done)
+	task, err := h.store.Update(r.Context(), id, req.Title, req.Done)
 	if err != nil {
 		if errors.Is(err, store.ErrNotFound) {
-			writeError(w, http.StatusNotFound, "task not found")
+			writeError(w, http.StatusNotFound, store.ErrNotFound.Error())
 		} else {
-			writeError(w, http.StatusInternalServerError, "internal server error")
+			writeError(w, http.StatusInternalServerError, errInternal)
 		}
 		return
 	}
@@ -179,12 +205,12 @@ func (h *Handler) HandleDeleteTaskByID(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	err = h.store.Delete(id)
+	err = h.store.Delete(r.Context(), id)
 	if err != nil {
 		if errors.Is(err, store.ErrNotFound) {
-			writeError(w, http.StatusNotFound, "task not found")
+			writeError(w, http.StatusNotFound, store.ErrNotFound.Error())
 		} else {
-			writeError(w, http.StatusInternalServerError, "internal server error")
+			writeError(w, http.StatusInternalServerError, errInternal)
 		}
 		return
 	}
