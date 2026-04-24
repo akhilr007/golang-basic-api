@@ -66,6 +66,40 @@ ifndef DB_URL
 	$(error DB_URL is not set. Use .envrc or export DB_URL=...)
 endif
 
+# ================================
+# TEST DB (DOCKER)
+# ================================
+
+test-db-up:
+	docker compose -f docker-compose.test.yml up -d
+
+test-db-down:
+	docker compose -f docker-compose.test.yml down -v
+
+test-db-wait:
+	@echo "Waiting for DB..."
+	@until docker exec tasks_test_db pg_isready -U testuser -d test_db; do sleep 1; done
+
+# ================================
+# INTEGRATION TEST
+# ================================
+
+test-integration:
+	@echo "Starting test DB..."
+	@docker compose -f docker-compose.test.yml up -d
+
+	@echo "Waiting for DB..."
+	@until docker exec tasks_test_db pg_isready -U testuser -d test_db; do sleep 1; done
+
+	@echo "Running migrations..."
+	@DB_URL=$(TEST_DB_URL) $(MAKE) migrate-up
+
+	@echo "Running tests..."
+	@DB_URL=$(TEST_DB_URL) go test ./internal/... -v
+
+	@echo "Cleaning up..."
+	@docker compose -f docker-compose.test.yml down -v
+
 
 # ================================
 # CREATE MIGRATION
