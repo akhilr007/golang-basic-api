@@ -105,7 +105,9 @@ func (h *Handler) HandleGetAllTasks(w http.ResponseWriter, r *http.Request) {
 func (h *Handler) HandleCreateTask(w http.ResponseWriter, r *http.Request) {
 	log := h.logger.With("method", r.Method, "path", r.URL.Path)
 
-	defer r.Body.Close()
+	defer func() {
+		_ = r.Body.Close()
+	}()
 	r.Body = http.MaxBytesReader(w, r.Body, 1<<20)
 
 	if !strings.HasPrefix(r.Header.Get("Content-Type"), "application/json") {
@@ -176,7 +178,9 @@ func (h *Handler) HandleGetTaskByID(w http.ResponseWriter, r *http.Request) {
 func (h *Handler) HandleUpdateTaskByID(w http.ResponseWriter, r *http.Request) {
 	log := h.logger.With("method", r.Method, "path", r.URL.Path)
 
-	defer r.Body.Close()
+	defer func() {
+		_ = r.Body.Close()
+	}()
 	r.Body = http.MaxBytesReader(w, r.Body, 1<<20)
 
 	if !strings.HasPrefix(r.Header.Get("Content-Type"), "application/json") {
