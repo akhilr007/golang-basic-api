@@ -42,7 +42,7 @@ jobs:
           sudo mv migrate /usr/local/bin/
 
       - name: Run migrations
-        run: make migrate-up
+        run: DB_URL=${{ env.TEST_DB_URL }} make migrate-up
 
       - name: Run unit tests
         run: go test ./... -v
