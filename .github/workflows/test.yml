@@ -71,7 +71,13 @@ jobs:
       # ================================
       - name: Run go vet
         run: go vet ./...
-
+        
+      # ================================
+      # DOWNLOAD DEPENDENCIES (CRITICAL FIX)
+      # ================================
+      - name: Download dependencies
+        run: go mod tidy
+        
       # ================================
       # LINT (golangci-lint)
       # ================================
