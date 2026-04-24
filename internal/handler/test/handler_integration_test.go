@@ -6,11 +6,9 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
-	"os"
 	"strings"
 	"testing"
 
-	"github.com/akhilr007/tasks/internal/db"
 	h "github.com/akhilr007/tasks/internal/handler"
 	"github.com/akhilr007/tasks/internal/store"
 
@@ -20,24 +18,17 @@ import (
 func setupWithTx(t *testing.T) *chi.Mux {
 	t.Helper()
 
-	dsn := os.Getenv("TEST_DB_URL")
-	if dsn == "" {
-		t.Fatal("TEST_DB_URL not set")
+	if testpool == nil {
+		t.Fatal("TestPool is nil")
 	}
 
-	pool, err := db.NewPool(dsn)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	tx, err := pool.Begin(context.Background())
+	tx, err := testpool.Begin(context.Background())
 	if err != nil {
 		t.Fatal(err)
 	}
 
 	t.Cleanup(func() {
 		_ = tx.Rollback(context.Background())
-		pool.Close()
 	})
 
 	store := store.NewPGStore(tx)
@@ -56,6 +47,7 @@ type createResp struct {
 }
 
 func createTask(t *testing.T, mux *chi.Mux) int {
+
 	req := httptest.NewRequest(http.MethodPost, "/tasks", strings.NewReader(`{"title":"task"}`))
 	req.Header.Set("Content-Type", "application/json")
 
@@ -75,6 +67,9 @@ func createTask(t *testing.T, mux *chi.Mux) int {
 }
 
 func TestCreateTask_Integration(t *testing.T) {
+
+	t.Parallel()
+
 	mux := setupWithTx(t)
 
 	id := createTask(t, mux)
@@ -84,6 +79,9 @@ func TestCreateTask_Integration(t *testing.T) {
 }
 
 func TestGetTaskByID_Integration(t *testing.T) {
+
+	t.Parallel()
+
 	mux := setupWithTx(t)
 
 	id := createTask(t, mux)
@@ -98,6 +96,9 @@ func TestGetTaskByID_Integration(t *testing.T) {
 }
 
 func TestUpdateTask_Integration(t *testing.T) {
+
+	t.Parallel()
+
 	mux := setupWithTx(t)
 
 	id := createTask(t, mux)
@@ -117,6 +118,9 @@ func TestUpdateTask_Integration(t *testing.T) {
 }
 
 func TestDeleteTask_Integration(t *testing.T) {
+
+	t.Parallel()
+
 	mux := setupWithTx(t)
 
 	id := createTask(t, mux)
