@@ -12,7 +12,7 @@ import (
 	"github.com/akhilr007/tasks/internal/model"
 	"github.com/akhilr007/tasks/internal/store"
 
-	"github.com/go-chi/chi/v5"
+	chi "github.com/go-chi/chi/v5"
 )
 
 const errInternal = "internal server error"
