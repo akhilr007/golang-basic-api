@@ -104,8 +104,9 @@ jobs:
       # RUN LINTER
       # ================================
       - name: Run linter
-        run: golangci-lint run ./...
-
+        run: |
+          GOFLAGS=-mod=mod golangci-lint run ./...
+          
       # ================================
       # INSTALL MIGRATE
       # ================================
