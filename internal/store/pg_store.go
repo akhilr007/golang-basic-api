@@ -4,19 +4,26 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"github.com/akhilr007/tasks/internal/model"
 	"strings"
 	"time"
 
+	"github.com/akhilr007/tasks/internal/model"
+
 	"github.com/jackc/pgx/v5"
-	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/jackc/pgx/v5/pgconn"
 )
 
 type PGStore struct {
-	db *pgxpool.Pool
+	db DBTX
 }
 
-func NewPGStore(db *pgxpool.Pool) *PGStore {
+type DBTX interface {
+	Query(ctx context.Context, sql string, args ...any) (pgx.Rows, error)
+	QueryRow(ctx context.Context, sql string, args ...any) pgx.Row
+	Exec(ctx context.Context, sql string, args ...any) (pgconn.CommandTag, error)
+}
+
+func NewPGStore(db DBTX) *PGStore {
 	return &PGStore{
 		db: db,
 	}
@@ -96,12 +103,12 @@ func (s *PGStore) Create(ctx context.Context, title string) (model.Task, error) 
 func (s *PGStore) Update(ctx context.Context, id int, title *string, done *bool) (model.Task, error) {
 	ctx, cancel := context.WithTimeout(ctx, 3*time.Second)
 	defer cancel()
-	
+
 	if title != nil {
 		trimmed := strings.TrimSpace(*title)
 		title = &trimmed
 	}
-	
+
 	var t model.Task
 	err := s.db.QueryRow(ctx,
 		`UPDATE tasks SET

@@ -2,6 +2,8 @@ package handler_test
 
 import (
 	"context"
+	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -15,7 +17,7 @@ import (
 	"github.com/go-chi/chi/v5"
 )
 
-func setupWithDB(t *testing.T) *chi.Mux {
+func setupWithTx(t *testing.T) *chi.Mux {
 	t.Helper()
 
 	dsn := os.Getenv("TEST_DB_URL")
@@ -28,18 +30,18 @@ func setupWithDB(t *testing.T) *chi.Mux {
 		t.Fatal(err)
 	}
 
-	// cleanup DB before test
-	_, err = pool.Exec(context.Background(), "TRUNCATE tasks RESTART IDENTITY CASCADE")
+	tx, err := pool.Begin(context.Background())
 	if err != nil {
 		t.Fatal(err)
 	}
 
 	t.Cleanup(func() {
+		_ = tx.Rollback(context.Background())
 		pool.Close()
 	})
 
-	pgStore := store.NewPGStore(pool)
-	handler := h.NewHandler(pgStore, newTestLogger())
+	store := store.NewPGStore(tx)
+	handler := h.NewHandler(store, newTestLogger())
 
 	r := chi.NewRouter()
 	handler.Routes(r)
@@ -47,9 +49,13 @@ func setupWithDB(t *testing.T) *chi.Mux {
 	return r
 }
 
-func TestCreateTask_Integration(t *testing.T) {
-	mux := setupWithDB(t)
+type createResp struct {
+	Data struct {
+		ID int `json:"id"`
+	} `json:"data"`
+}
 
+func createTask(t *testing.T, mux *chi.Mux) int {
 	req := httptest.NewRequest(http.MethodPost, "/tasks", strings.NewReader(`{"title":"task"}`))
 	req.Header.Set("Content-Type", "application/json")
 
@@ -57,22 +63,33 @@ func TestCreateTask_Integration(t *testing.T) {
 	mux.ServeHTTP(rr, req)
 
 	if rr.Code != http.StatusCreated {
-		t.Fatalf("expected 201 got %d", rr.Code)
+		t.Fatalf("create failed: %d", rr.Code)
+	}
+
+	var resp createResp
+	if err := json.NewDecoder(rr.Body).Decode(&resp); err != nil {
+		t.Fatal(err)
+	}
+
+	return resp.Data.ID
+}
+
+func TestCreateTask_Integration(t *testing.T) {
+	mux := setupWithTx(t)
+
+	id := createTask(t, mux)
+	if id == 0 {
+		t.Fatal("expected valid id")
 	}
 }
 
 func TestGetTaskByID_Integration(t *testing.T) {
-	mux := setupWithDB(t)
+	mux := setupWithTx(t)
 
-	// create first
-	req := httptest.NewRequest(http.MethodPost, "/tasks", strings.NewReader(`{"title":"task"}`))
-	req.Header.Set("Content-Type", "application/json")
+	id := createTask(t, mux)
+
+	req := httptest.NewRequest(http.MethodGet, fmt.Sprintf("/tasks/%d", id), nil)
 	rr := httptest.NewRecorder()
-	mux.ServeHTTP(rr, req)
-
-	// fetch
-	req = httptest.NewRequest(http.MethodGet, "/tasks/1", nil)
-	rr = httptest.NewRecorder()
 	mux.ServeHTTP(rr, req)
 
 	if rr.Code != http.StatusOK {
@@ -81,16 +98,17 @@ func TestGetTaskByID_Integration(t *testing.T) {
 }
 
 func TestUpdateTask_Integration(t *testing.T) {
-	mux := setupWithDB(t)
+	mux := setupWithTx(t)
 
-	req := httptest.NewRequest(http.MethodPost, "/tasks", strings.NewReader(`{"title":"task"}`))
+	id := createTask(t, mux)
+
+	req := httptest.NewRequest(http.MethodPut,
+		fmt.Sprintf("/tasks/%d", id),
+		strings.NewReader(`{"done":true}`),
+	)
 	req.Header.Set("Content-Type", "application/json")
+
 	rr := httptest.NewRecorder()
-	mux.ServeHTTP(rr, req)
-
-	req = httptest.NewRequest(http.MethodPut, "/tasks/1", strings.NewReader(`{"done":true}`))
-	req.Header.Set("Content-Type", "application/json")
-	rr = httptest.NewRecorder()
 	mux.ServeHTTP(rr, req)
 
 	if rr.Code != http.StatusOK {
@@ -99,15 +117,16 @@ func TestUpdateTask_Integration(t *testing.T) {
 }
 
 func TestDeleteTask_Integration(t *testing.T) {
-	mux := setupWithDB(t)
+	mux := setupWithTx(t)
 
-	req := httptest.NewRequest(http.MethodPost, "/tasks", strings.NewReader(`{"title":"task"}`))
-	req.Header.Set("Content-Type", "application/json")
+	id := createTask(t, mux)
+
+	req := httptest.NewRequest(http.MethodDelete,
+		fmt.Sprintf("/tasks/%d", id),
+		nil,
+	)
+
 	rr := httptest.NewRecorder()
-	mux.ServeHTTP(rr, req)
-
-	req = httptest.NewRequest(http.MethodDelete, "/tasks/1", nil)
-	rr = httptest.NewRecorder()
 	mux.ServeHTTP(rr, req)
 
 	if rr.Code != http.StatusNoContent {
