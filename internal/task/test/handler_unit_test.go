@@ -9,9 +9,7 @@ import (
 	"strings"
 	"testing"
 
-	h "github.com/akhilr007/tasks/internal/handler"
-	"github.com/akhilr007/tasks/internal/model"
-	"github.com/akhilr007/tasks/internal/store"
+	"github.com/akhilr007/tasks/internal/task"
 	chi "github.com/go-chi/chi/v5"
 )
 
@@ -22,26 +20,26 @@ import (
 //
 
 type MockStore struct {
-	GetAllFunc  func(ctx context.Context) ([]model.Task, error)
-	GetByIDFunc func(ctx context.Context, id int) (model.Task, error)
-	CreateFunc  func(ctx context.Context, title string) (model.Task, error)
-	UpdateFunc  func(ctx context.Context, id int, title *string, done *bool) (model.Task, error)
+	GetAllFunc  func(ctx context.Context) ([]task.Task, error)
+	GetByIDFunc func(ctx context.Context, id int) (task.Task, error)
+	CreateFunc  func(ctx context.Context, title string) (task.Task, error)
+	UpdateFunc  func(ctx context.Context, id int, title *string, done *bool) (task.Task, error)
 	DeleteFunc  func(ctx context.Context, id int) error
 }
 
-func (m *MockStore) GetAll(ctx context.Context) ([]model.Task, error) {
+func (m *MockStore) GetAll(ctx context.Context) ([]task.Task, error) {
 	return m.GetAllFunc(ctx)
 }
 
-func (m *MockStore) GetByID(ctx context.Context, id int) (model.Task, error) {
+func (m *MockStore) GetByID(ctx context.Context, id int) (task.Task, error) {
 	return m.GetByIDFunc(ctx, id)
 }
 
-func (m *MockStore) Create(ctx context.Context, title string) (model.Task, error) {
+func (m *MockStore) Create(ctx context.Context, title string) (task.Task, error) {
 	return m.CreateFunc(ctx, title)
 }
 
-func (m *MockStore) Update(ctx context.Context, id int, title *string, done *bool) (model.Task, error) {
+func (m *MockStore) Update(ctx context.Context, id int, title *string, done *bool) (task.Task, error) {
 	return m.UpdateFunc(ctx, id, title, done)
 }
 
@@ -55,11 +53,11 @@ func (m *MockStore) Delete(ctx context.Context, id int) error {
 // ===============================
 //
 
-func newHandlerWithMock(mock *MockStore) *h.Handler {
-	return h.NewHandler(mock, newTestLogger())
+func newHandlerWithMock(mock *MockStore) *task.Handler {
+	return task.NewHandler(mock, newTestLogger())
 }
 
-func runRequest(t *testing.T, handler *h.Handler, method, url, body string) *httptest.ResponseRecorder {
+func runRequest(t *testing.T, handler *task.Handler, method, url, body string) *httptest.ResponseRecorder {
 
 	t.Helper()
 
@@ -106,8 +104,8 @@ func TestHandleCreateTask(t *testing.T) {
 			body: `{"title":"task"}`,
 			mock: func() *MockStore {
 				return &MockStore{
-					CreateFunc: func(ctx context.Context, title string) (model.Task, error) {
-						return model.Task{ID: 1, Title: title}, nil
+					CreateFunc: func(ctx context.Context, title string) (task.Task, error) {
+						return task.Task{ID: 1, Title: title}, nil
 					},
 				}
 			},
@@ -132,8 +130,8 @@ func TestHandleCreateTask(t *testing.T) {
 			body: `{"title":"task"}`,
 			mock: func() *MockStore {
 				return &MockStore{
-					CreateFunc: func(ctx context.Context, title string) (model.Task, error) {
-						return model.Task{}, errors.New("db error")
+					CreateFunc: func(ctx context.Context, title string) (task.Task, error) {
+						return task.Task{}, errors.New("db error")
 					},
 				}
 			},
@@ -187,8 +185,8 @@ func TestHandleGetTaskByID(t *testing.T) {
 			url:  "/tasks/1",
 			mock: func() *MockStore {
 				return &MockStore{
-					GetByIDFunc: func(ctx context.Context, id int) (model.Task, error) {
-						return model.Task{ID: id, Title: "task"}, nil
+					GetByIDFunc: func(ctx context.Context, id int) (task.Task, error) {
+						return task.Task{ID: id, Title: "task"}, nil
 					},
 				}
 			},
@@ -199,8 +197,8 @@ func TestHandleGetTaskByID(t *testing.T) {
 			url:  "/tasks/1",
 			mock: func() *MockStore {
 				return &MockStore{
-					GetByIDFunc: func(ctx context.Context, id int) (model.Task, error) {
-						return model.Task{}, store.ErrNotFound
+					GetByIDFunc: func(ctx context.Context, id int) (task.Task, error) {
+						return task.Task{}, task.ErrNotFound
 					},
 				}
 			},
@@ -219,8 +217,8 @@ func TestHandleGetTaskByID(t *testing.T) {
 			url:  "/tasks/1",
 			mock: func() *MockStore {
 				return &MockStore{
-					GetByIDFunc: func(ctx context.Context, id int) (model.Task, error) {
-						return model.Task{}, errors.New("db error")
+					GetByIDFunc: func(ctx context.Context, id int) (task.Task, error) {
+						return task.Task{}, errors.New("db error")
 					},
 				}
 			},
@@ -264,7 +262,7 @@ func TestHandleUpdateTask(t *testing.T) {
 			body: `{"title":"updated","done":true}`,
 			mock: func() *MockStore {
 				return &MockStore{
-					UpdateFunc: func(ctx context.Context, id int, title *string, done *bool) (model.Task, error) {
+					UpdateFunc: func(ctx context.Context, id int, title *string, done *bool) (task.Task, error) {
 						var t string
 						var d bool
 						if title != nil {
@@ -273,7 +271,7 @@ func TestHandleUpdateTask(t *testing.T) {
 						if done != nil {
 							d = *done
 						}
-						return model.Task{ID: id, Title: t, Done: d}, nil
+						return task.Task{ID: id, Title: t, Done: d}, nil
 					},
 				}
 			},
@@ -293,8 +291,8 @@ func TestHandleUpdateTask(t *testing.T) {
 			body: `{"title":"x"}`,
 			mock: func() *MockStore {
 				return &MockStore{
-					UpdateFunc: func(ctx context.Context, id int, title *string, done *bool) (model.Task, error) {
-						return model.Task{}, store.ErrNotFound
+					UpdateFunc: func(ctx context.Context, id int, title *string, done *bool) (task.Task, error) {
+						return task.Task{}, task.ErrNotFound
 					},
 				}
 			},
@@ -348,7 +346,7 @@ func TestHandleDeleteTask(t *testing.T) {
 			mock: func() *MockStore {
 				return &MockStore{
 					DeleteFunc: func(ctx context.Context, id int) error {
-						return store.ErrNotFound
+						return task.ErrNotFound
 					},
 				}
 			},

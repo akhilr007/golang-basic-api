@@ -8,14 +8,11 @@ import (
 	"syscall"
 	"time"
 
-	chi "github.com/go-chi/chi/v5"
-	"github.com/go-chi/chi/v5/middleware"
-
+	"github.com/akhilr007/tasks/internal/app"
 	"github.com/akhilr007/tasks/internal/config"
 	"github.com/akhilr007/tasks/internal/db"
-	"github.com/akhilr007/tasks/internal/handler"
 	"github.com/akhilr007/tasks/internal/logger"
-	"github.com/akhilr007/tasks/internal/store"
+	"github.com/akhilr007/tasks/internal/routes"
 )
 
 func main() {
@@ -31,17 +28,8 @@ func main() {
 	}
 	defer pool.Close()
 
-	// get my store
-	// store := store.NewStore()
-	pgStore := store.NewPGStore(pool)
-	handler := handler.NewHandler(pgStore, log)
-
-	// add a router
-	r := chi.NewRouter()
-	r.Use(middleware.Logger)
-	r.Use(middleware.Recoverer)
-
-	handler.Routes(r)
+	application := app.New(log, pool)
+	r := routes.Mount(application)
 
 	// how to create a http server in go
 	server := &http.Server{

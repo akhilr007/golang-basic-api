@@ -11,8 +11,7 @@ import (
 	"strings"
 	"testing"
 
-	h "github.com/akhilr007/tasks/internal/handler"
-	"github.com/akhilr007/tasks/internal/store"
+	"github.com/akhilr007/tasks/internal/task"
 
 	"github.com/go-chi/chi/v5"
 )
@@ -33,8 +32,8 @@ func setupWithTx(t *testing.T) *chi.Mux {
 		_ = tx.Rollback(context.Background())
 	})
 
-	store := store.NewPGStore(tx)
-	handler := h.NewHandler(store, newTestLogger())
+	repo := task.NewPGRepository(tx)
+	handler := task.NewHandler(repo, newTestLogger())
 
 	r := chi.NewRouter()
 	handler.Routes(r)
