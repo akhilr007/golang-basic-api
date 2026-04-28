@@ -1,6 +1,4 @@
-//go:build integration
-
-package handler_test
+package task_test
 
 import (
 	"context"
@@ -20,7 +18,7 @@ func setupWithTx(t *testing.T) *chi.Mux {
 	t.Helper()
 
 	if testpool == nil {
-		t.Fatal("TestPool is nil")
+		t.Skip("TEST_DB_URL is not set; skipping integration test")
 	}
 
 	tx, err := testpool.Begin(context.Background())
@@ -33,7 +31,9 @@ func setupWithTx(t *testing.T) *chi.Mux {
 	})
 
 	repo := task.NewPGRepository(tx)
-	handler := task.NewHandler(repo, newTestLogger())
+	logger := newTestLogger()
+	service := task.NewService(repo, logger)
+	handler := task.NewHandler(service, logger)
 
 	r := chi.NewRouter()
 	handler.Routes(r)

@@ -1,4 +1,4 @@
-package handler_test
+package task_test
 
 import (
 	"context"
@@ -54,7 +54,9 @@ func (m *MockStore) Delete(ctx context.Context, id int) error {
 //
 
 func newHandlerWithMock(mock *MockStore) *task.Handler {
-	return task.NewHandler(mock, newTestLogger())
+	logger := newTestLogger()
+	service := task.NewService(mock, logger)
+	return task.NewHandler(service, logger)
 }
 
 func runRequest(t *testing.T, handler *task.Handler, method, url, body string) *httptest.ResponseRecorder {

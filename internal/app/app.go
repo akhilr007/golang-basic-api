@@ -9,19 +9,21 @@ import (
 )
 
 type App struct {
-	Logger      *slog.Logger
-	TaskHandler *task.Handler
-	AuthHandler *auth.Handler
+	Logger *slog.Logger
+
+	TaskService *task.Service
+	AuthService *auth.Service
 }
 
 func New(logger *slog.Logger, database db.DBTX) *App {
 	taskRepo := task.NewPGRepository(database)
 	authRepo := auth.NewPGRepository(database)
+	taskService := task.NewService(taskRepo, logger)
 	authService := auth.NewService(authRepo, logger)
 
 	return &App{
 		Logger:      logger,
-		TaskHandler: task.NewHandler(taskRepo, logger),
-		AuthHandler: auth.NewHandler(authService, logger),
+		TaskService: taskService,
+		AuthService: authService,
 	}
 }

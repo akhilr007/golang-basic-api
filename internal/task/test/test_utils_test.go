@@ -1,4 +1,4 @@
-package handler_test
+package task_test
 
 import (
 	"io"

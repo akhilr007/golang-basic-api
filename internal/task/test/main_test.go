@@ -1,6 +1,4 @@
-//go:build integration
-
-package handler_test
+package task_test
 
 import (
 	"os"
@@ -15,7 +13,7 @@ var testpool *pgxpool.Pool
 func TestMain(m *testing.M) {
 	dsn := os.Getenv("TEST_DB_URL")
 	if dsn == "" {
-		panic("TEST_DB_URL not set")
+		os.Exit(m.Run())
 	}
 
 	var err error
