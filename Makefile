@@ -55,6 +55,7 @@ MIGRATIONS_PATH ?= ./cmd/migrate/migrations
 .PHONY: migrate-create migrate-up migrate-up-one migrate-up-all \
         migrate-down migrate-down-all \
         migrate-fix migrate-version migrate-drop \
+        test-unit test-db-up test-db-down test-db-wait test-integration \
         help check-db print-env
 
 
@@ -101,7 +102,7 @@ test-integration:
 	@DB_URL=$(TEST_DB_URL) $(MAKE) migrate-up
 
 	@echo "Running tests..."
-	@DB_URL=$(TEST_DB_URL) go test ./internal/... -v
+	@DB_URL=$(TEST_DB_URL) go test ./internal/... -tags=integration -v
 
 	@echo "Cleaning up..."
 	@docker compose -f docker-compose.test.yml down -v

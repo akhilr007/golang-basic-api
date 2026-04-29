@@ -64,7 +64,9 @@ func runRequest(t *testing.T, handler *task.Handler, method, url, body string) *
 	t.Helper()
 
 	r := chi.NewRouter()
-	handler.Routes(r)
+	r.Route("/tasks", func(r chi.Router) {
+		handler.Routes(r)
+	})
 
 	req := httptest.NewRequest(method, url, strings.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")

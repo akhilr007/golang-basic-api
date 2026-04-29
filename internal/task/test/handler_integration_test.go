@@ -1,3 +1,5 @@
+//go:build integration
+
 package task_test
 
 import (
@@ -36,7 +38,9 @@ func setupWithTx(t *testing.T) *chi.Mux {
 	handler := task.NewHandler(service, logger)
 
 	r := chi.NewRouter()
-	handler.Routes(r)
+	r.Route("/tasks", func(r chi.Router) {
+		handler.Routes(r)
+	})
 
 	return r
 }
