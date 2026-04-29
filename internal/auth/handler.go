@@ -5,6 +5,7 @@ import (
 	"log/slog"
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/akhilr007/tasks/internal/utils"
 )
@@ -24,6 +25,13 @@ func NewHandler(s *Service, log *slog.Logger) *Handler {
 type authRequest struct {
 	Email    string `json:"email"`
 	Password string `json:"password"`
+}
+
+type userResponse struct {
+	ID         int       `json:"id"`
+	Email      string    `json:"email"`
+	IsVerified bool      `json:"is_verified"`
+	CreatedAt  time.Time `json:"created_at"`
 }
 
 func (h *Handler) Register(w http.ResponseWriter, r *http.Request) {
@@ -105,15 +113,24 @@ func (h *Handler) Login(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	log.Info("user login successful", "user_id", user.ID)
-
-	resp := struct {
-		ID    int    `json:"id"`
-		Email string `json:"email"`
-	}{
-		ID:    user.ID,
-		Email: user.Email,
+	token, err := GenerateToken(user.ID)
+	if err != nil {
+		log.Error("failed to generate token", "error", err)
+		utils.WriteError(w, http.StatusInternalServerError, "failed to generate token")
+		return
 	}
+
+	resp := map[string]any{
+		"user": userResponse{
+			ID:         user.ID,
+			Email:      user.Email,
+			IsVerified: user.IsVerified,
+			CreatedAt:  user.CreatedAt,
+		},
+		"token": token,
+	}
+
+	log.Info("login successful", "user", user.ID)
 
 	utils.WriteSuccess(w, http.StatusOK, resp)
 }

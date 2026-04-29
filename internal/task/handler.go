@@ -26,13 +26,11 @@ func NewHandler(service *Service, log *slog.Logger) *Handler {
 }
 
 func (h *Handler) Routes(r chi.Router) {
-	r.Route("/tasks", func(r chi.Router) {
-		r.Get("/", h.HandleGetAllTasks)
-		r.Post("/", h.HandleCreateTask)
-		r.Get("/{id}", h.HandleGetTaskByID)
-		r.Put("/{id}", h.HandleUpdateTaskByID)
-		r.Delete("/{id}", h.HandleDeleteTaskByID)
-	})
+	r.Get("/", h.HandleGetAllTasks)
+	r.Post("/", h.HandleCreateTask)
+	r.Get("/{id}", h.HandleGetTaskByID)
+	r.Put("/{id}", h.HandleUpdateTaskByID)
+	r.Delete("/{id}", h.HandleDeleteTaskByID)
 }
 
 func (h *Handler) HandleGetAllTasks(w http.ResponseWriter, r *http.Request) {

@@ -26,7 +26,10 @@ func Mount(application *app.App) *chi.Mux {
 	taskHandler := task.NewHandler(application.TaskService, application.Logger)
 	authHandler := auth.NewHandler(application.AuthService, application.Logger)
 
-	taskHandler.Routes(r)
+	r.Route("/tasks", func(r chi.Router) {
+		r.Use(auth.Middleware)
+		taskHandler.Routes(r)
+	})
 
 	r.Route("/auth", func(r chi.Router) {
 		r.Post("/register", authHandler.Register)
