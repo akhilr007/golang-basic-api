@@ -17,9 +17,11 @@ type App struct {
 
 func New(logger *slog.Logger, database db.DBTX) *App {
 	taskRepo := task.NewPGRepository(database)
-	authRepo := auth.NewPGRepository(database)
+	userRepo := auth.NewPGRepository(database)
+	refreshTokenRepo := auth.NewPGRepository(database)
+
 	taskService := task.NewService(taskRepo, logger)
-	authService := auth.NewService(authRepo, logger)
+	authService := auth.NewService(userRepo, refreshTokenRepo, logger)
 
 	return &App{
 		Logger:      logger,

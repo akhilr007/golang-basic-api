@@ -106,17 +106,10 @@ func (h *Handler) Login(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	user, err := h.service.Login(r.Context(), req.Email, req.Password)
+	user, accessToken, refreshToken, expiry, err := h.service.Login(r.Context(), req.Email, req.Password)
 	if err != nil {
 		log.Warn("login failed", "error", err)
 		utils.WriteError(w, http.StatusUnauthorized, "invalid credentials")
-		return
-	}
-
-	token, err := GenerateToken(user.ID)
-	if err != nil {
-		log.Error("failed to generate token", "error", err)
-		utils.WriteError(w, http.StatusInternalServerError, "failed to generate token")
 		return
 	}
 
@@ -127,10 +120,117 @@ func (h *Handler) Login(w http.ResponseWriter, r *http.Request) {
 			IsVerified: user.IsVerified,
 			CreatedAt:  user.CreatedAt,
 		},
-		"token": token,
+		"accessToken": accessToken,
 	}
+
+	http.SetCookie(w, &http.Cookie{
+		Name:     "refresh_token",
+		Value:    refreshToken,
+		Path:     "/",
+		HttpOnly: true,
+		Secure:   true, // true in production (https)
+		SameSite: http.SameSiteLaxMode,
+		Expires:  expiry,
+	})
 
 	log.Info("login successful", "user", user.ID)
 
 	utils.WriteSuccess(w, http.StatusOK, resp)
+}
+
+func (h *Handler) Refresh(w http.ResponseWriter, r *http.Request) {
+	log := h.logger.With(
+		"method", r.Method,
+		"path", r.URL.Path,
+		"handler", "Refresh",
+	)
+
+	// get refresh token from cookie
+	cookie, err := r.Cookie("refresh_token")
+	if err != nil {
+		log.Warn("missing refresh token cookie", "error", err)
+		utils.WriteError(w, http.StatusUnauthorized, "missing refresh token")
+		return
+	}
+
+	rawToken := cookie.Value
+
+	accessToken, newRefreshToken, err := h.service.Refresh(r.Context(), rawToken)
+	if err != nil {
+		log.Warn("refresh failed", "error", err)
+
+		// clear cookie
+		http.SetCookie(w, &http.Cookie{
+			Name:     "refresh_token",
+			Value:    "",
+			Path:     "/",
+			HttpOnly: false,
+			Secure:   true,
+			Expires:  time.Unix(0, 0),
+		})
+
+		utils.WriteError(w, http.StatusUnauthorized, "invalid or expired session")
+		return
+	}
+
+	http.SetCookie(w, &http.Cookie{
+		Name:     "refresh_token",
+		Value:    newRefreshToken,
+		Path:     "/",
+		HttpOnly: false, // true for production
+		Secure:   true,
+		SameSite: http.SameSiteLaxMode,
+		Expires:  time.Now().Add(7 * 24 * time.Hour),
+	})
+
+	resp := map[string]any{
+		"accessToken": accessToken,
+	}
+
+	log.Info("token refresh successfully")
+
+	utils.WriteSuccess(w, http.StatusOK, resp)
+}
+
+func (h *Handler) Logout(w http.ResponseWriter, r *http.Request) {
+	log := h.logger.With(
+		"method", r.Method,
+		"path", r.URL.Path,
+		"handler", "Logout",
+	)
+
+	// 1. Read refresh token from cookie
+	cookie, err := r.Cookie("refresh_token")
+	if err != nil {
+		log.Warn("missing refresh token", "error", err)
+		utils.WriteError(w, http.StatusUnauthorized, "not authenticated")
+		return
+	}
+
+	rawToken := cookie.Value
+
+	// 2. Revoke in DB
+	err = h.service.Logout(r.Context(), rawToken)
+	if err != nil {
+		log.Warn("logout failed", "error", err)
+		utils.WriteError(w, http.StatusUnauthorized, "invalid session")
+		return
+	}
+
+	// 3. Clear cookie
+	http.SetCookie(w, &http.Cookie{
+		Name:     "refresh_token",
+		Value:    "",
+		Path:     "/",
+		HttpOnly: false, // true for production
+		Secure:   true,
+		SameSite: http.SameSiteLaxMode,
+		Expires:  time.Unix(0, 0),
+	})
+
+	log.Info("logout successful")
+
+	utils.WriteSuccess(w, http.StatusOK, map[string]string{
+		"message": "logged out successfully",
+	})
 }

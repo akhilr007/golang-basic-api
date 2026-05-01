@@ -15,7 +15,7 @@ type Claims struct {
 	jwt.RegisteredClaims
 }
 
-func GenerateToken(userID int) (string, error) {
+func GenerateAccessToken(userID int) (string, error) {
 
 	now := time.Now()
 
