@@ -72,8 +72,14 @@ func (h *Handler) Register(w http.ResponseWriter, r *http.Request) {
 	}
 
 	log.Info("user registered", "user_id", user.ID)
-	utils.WriteSuccess(w, http.StatusCreated, user)
 
+	resp := userResponse{
+		ID:         user.ID,
+		Email:      user.Email,
+		IsVerified: user.IsVerified,
+		CreatedAt:  user.CreatedAt,
+	}
+	utils.WriteSuccess(w, http.StatusCreated, resp)
 }
 
 func (h *Handler) Login(w http.ResponseWriter, r *http.Request) {
