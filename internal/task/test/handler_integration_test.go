@@ -11,6 +11,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/akhilr007/tasks/internal/auth"
 	"github.com/akhilr007/tasks/internal/task"
 
 	"github.com/go-chi/chi/v5"
@@ -32,12 +33,30 @@ func setupWithTx(t *testing.T) *chi.Mux {
 		_ = tx.Rollback(context.Background())
 	})
 
+	email := strings.NewReplacer("/", "_", " ", "_").Replace(t.Name()) + "@example.test"
+	var userID int
+	err = tx.QueryRow(
+		context.Background(),
+		`INSERT INTO users (email, password_hash) VALUES ($1, $2) RETURNING id`,
+		email,
+		"test-password-hash",
+	).Scan(&userID)
+	if err != nil {
+		t.Fatal(err)
+	}
+
 	repo := task.NewPGRepository(tx)
 	logger := newTestLogger()
 	service := task.NewService(repo, logger)
 	handler := task.NewHandler(service, logger)
 
 	r := chi.NewRouter()
+	r.Use(func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			ctx := context.WithValue(r.Context(), auth.UserIDKey, userID)
+			next.ServeHTTP(w, r.WithContext(ctx))
+		})
+	})
 	r.Route("/tasks", func(r chi.Router) {
 		handler.Routes(r)
 	})

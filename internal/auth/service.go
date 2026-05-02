@@ -20,6 +20,11 @@ type Service struct {
 	logger           *slog.Logger
 }
 
+var (
+	ErrAuthInput        = errors.New("email and password required")
+	ErrPasswordTooShort = errors.New("password must be at least 6 characters")
+)
+
 func NewService(userRepo UserRepository, refreshTokenRepo RefreshTokenRepository, log *slog.Logger) *Service {
 	return &Service{
 		userRepo:         userRepo,
@@ -39,12 +44,12 @@ func (s *Service) Register(ctx context.Context, email, password string) (User, e
 
 	if email == "" || password == "" {
 		log.Error("invalid input: email or password missing")
-		return User{}, errors.New("email and password required")
+		return User{}, ErrAuthInput
 	}
 
 	if len(password) < 6 {
 		log.Error("password too short", "length", len(password))
-		return User{}, errors.New("password must be at least 6 characters")
+		return User{}, ErrPasswordTooShort
 	}
 
 	hash, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
@@ -124,6 +129,10 @@ func (s *Service) Login(ctx context.Context, email, password string) (User, stri
 }
 
 func (s *Service) Refresh(ctx context.Context, rawToken string) (string, string, error) {
+	if len(rawToken) < 6 {
+		s.logger.Warn("invalid refresh token length")
+		return "", "", errors.New("invalid token")
+	}
 
 	log := s.logger.With(
 		"service", "auth",
@@ -150,25 +159,28 @@ func (s *Service) Refresh(ctx context.Context, rawToken string) (string, string,
 		return "", "", errors.New("expired token")
 	}
 
-	// rotate
-	if err := s.refreshTokenRepo.RevokeByJTI(ctx, refreshToken.JTI); err != nil {
-		log.Error("failed to revoke token", "error", err)
-		return "", "", errors.New("internal server error")
-	}
-
 	newRaw, newHash, newJTI, err := GenerateRefreshToken()
 	if err != nil {
 		log.Error("refresh token generation failed", "error", err)
 		return "", "", errors.New("internal server error")
 	}
 
-	err = s.refreshTokenRepo.SaveToken(ctx, refreshToken.UserID, newHash, newJTI, refreshToken.FamilyID, time.Now().Add(7*24*time.Hour))
+	_, err = s.refreshTokenRepo.RotateToken(ctx, hash, newHash, newJTI, time.Now().Add(7*24*time.Hour))
 	if err != nil {
+		if errors.Is(err, ErrTokenAlreadyRevoked) {
+			_ = s.refreshTokenRepo.RevokeFamily(ctx, refreshToken.FamilyID)
+			return "", "", errors.New("session compromised")
+		}
+
 		log.Error("refresh token save", "error", err)
 		return "", "", errors.New("something went wrong")
 	}
 
-	accessToken, _ := GenerateAccessToken(refreshToken.UserID)
+	accessToken, err := GenerateAccessToken(refreshToken.UserID)
+	if err != nil {
+		log.Error("access token", "error", err)
+		return "", "", errors.New("internal server error")
+	}
 
 	return accessToken, newRaw, nil
 }

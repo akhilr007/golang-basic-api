@@ -8,6 +8,7 @@ import (
 
 	"github.com/akhilr007/tasks/internal/db"
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 )
 
 type PGRepository struct {
@@ -34,6 +35,10 @@ func (r *PGRepository) CreateUser(ctx context.Context, email, passwordHash strin
 	).Scan(&u.ID, &u.Email, &u.PasswordHash, &u.IsVerified, &u.CreatedAt)
 
 	if err != nil {
+		var pgErr *pgconn.PgError
+		if errors.As(err, &pgErr) && pgErr.Code == "23505" {
+			return User{}, ErrEmailAlreadyExists
+		}
 		return User{}, fmt.Errorf("create user: %w", err)
 	}
 

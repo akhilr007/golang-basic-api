@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/akhilr007/tasks/internal/app"
+	"github.com/akhilr007/tasks/internal/auth"
 	"github.com/akhilr007/tasks/internal/config"
 	"github.com/akhilr007/tasks/internal/db"
 	"github.com/akhilr007/tasks/internal/logger"
@@ -21,6 +22,11 @@ func main() {
 
 	log := logger.New(cfg.Logger)
 
+	if err := auth.ConfigureJWTSecret(cfg.Auth.JWTSecret); err != nil {
+		log.Error("failed to configure jwt", "error", err)
+		os.Exit(1)
+	}
+
 	pool, err := db.NewPool(cfg.DB.URL)
 	if err != nil {
 		log.Error("failed to initialize db pool", "error", err)
@@ -29,7 +35,7 @@ func main() {
 	defer pool.Close()
 
 	application := app.New(log, pool)
-	r := routes.Mount(application)
+	r := routes.Mount(application, cfg.Auth.CookieSecure)
 
 	// how to create a http server in go
 	server := &http.Server{

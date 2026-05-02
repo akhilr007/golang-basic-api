@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"strings"
 
+	"github.com/akhilr007/tasks/internal/auth"
 	"github.com/akhilr007/tasks/internal/utils"
 
 	chi "github.com/go-chi/chi/v5"
@@ -36,7 +37,13 @@ func (h *Handler) Routes(r chi.Router) {
 func (h *Handler) HandleGetAllTasks(w http.ResponseWriter, r *http.Request) {
 	log := h.logger.With("method", r.Method, "path", r.URL.Path)
 
-	tasks, err := h.service.GetAll(r.Context())
+	userID, ok := r.Context().Value(auth.UserIDKey).(int)
+	if !ok {
+		utils.WriteError(w, http.StatusUnauthorized, "invalid user")
+		return
+	}
+
+	tasks, err := h.service.GetAll(r.Context(), userID)
 	if err != nil {
 		log.Error("failed to fetch tasks", "error", err)
 		utils.WriteError(w, http.StatusInternalServerError, err.Error())
@@ -53,6 +60,12 @@ func (h *Handler) HandleGetAllTasks(w http.ResponseWriter, r *http.Request) {
 
 func (h *Handler) HandleCreateTask(w http.ResponseWriter, r *http.Request) {
 	log := h.logger.With("method", r.Method, "path", r.URL.Path)
+
+	userID, ok := r.Context().Value(auth.UserIDKey).(int)
+	if !ok {
+		utils.WriteError(w, http.StatusUnauthorized, "invalid user")
+		return
+	}
 
 	defer func() {
 		_ = r.Body.Close()
@@ -87,10 +100,15 @@ func (h *Handler) HandleCreateTask(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	task, err := h.service.Create(r.Context(), req.Title)
+	task, err := h.service.Create(r.Context(), userID, req.Title)
 	if err != nil {
-		log.Error("failed to create task", "error", err)
-		utils.WriteError(w, http.StatusInternalServerError, utils.ErrInternal)
+		if errors.Is(err, ErrInvalidTitle) {
+			log.Warn("empty title provided")
+			utils.WriteError(w, http.StatusBadRequest, ErrInvalidTitle.Error())
+		} else {
+			log.Error("failed to create task", "error", err)
+			utils.WriteError(w, http.StatusInternalServerError, utils.ErrInternal)
+		}
 		return
 	}
 
@@ -108,7 +126,13 @@ func (h *Handler) HandleGetTaskByID(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	task, err := h.service.GetByID(r.Context(), id)
+	userID, ok := r.Context().Value(auth.UserIDKey).(int)
+	if !ok {
+		utils.WriteError(w, http.StatusUnauthorized, "invalid user")
+		return
+	}
+
+	task, err := h.service.GetByID(r.Context(), id, userID)
 	if err != nil {
 		if errors.Is(err, ErrNotFound) {
 			log.Info("task not found", "task_id", id)
@@ -167,11 +191,20 @@ func (h *Handler) HandleUpdateTaskByID(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	task, err := h.service.Update(r.Context(), id, req.Title, req.Done)
+	userID, ok := r.Context().Value(auth.UserIDKey).(int)
+	if !ok {
+		utils.WriteError(w, http.StatusUnauthorized, "invalid user")
+		return
+	}
+
+	task, err := h.service.Update(r.Context(), id, userID, req.Title, req.Done)
 	if err != nil {
 		if errors.Is(err, ErrNotFound) {
 			log.Info("task not found for update", "task_id", id)
 			utils.WriteError(w, http.StatusNotFound, ErrNotFound.Error())
+		} else if errors.Is(err, ErrInvalidTitle) {
+			log.Warn("empty title provided", "task_id", id)
+			utils.WriteError(w, http.StatusBadRequest, ErrInvalidTitle.Error())
 		} else {
 			log.Error("failed to update task", "task_id", id, "error", err)
 			utils.WriteError(w, http.StatusInternalServerError, utils.ErrInternal)
@@ -193,7 +226,13 @@ func (h *Handler) HandleDeleteTaskByID(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	err = h.service.Delete(r.Context(), id)
+	userID, ok := r.Context().Value(auth.UserIDKey).(int)
+	if !ok {
+		utils.WriteError(w, http.StatusUnauthorized, "invalid user")
+		return
+	}
+
+	err = h.service.Delete(r.Context(), id, userID)
 	if err != nil {
 		if errors.Is(err, ErrNotFound) {
 			log.Info("task not found for delete", "task_id", id)

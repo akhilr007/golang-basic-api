@@ -2,6 +2,7 @@ package auth
 
 import (
 	"encoding/json"
+	"errors"
 	"log/slog"
 	"net/http"
 	"strings"
@@ -11,14 +12,16 @@ import (
 )
 
 type Handler struct {
-	service *Service
-	logger  *slog.Logger
+	service      *Service
+	logger       *slog.Logger
+	cookieSecure bool
 }
 
-func NewHandler(s *Service, log *slog.Logger) *Handler {
+func NewHandler(s *Service, log *slog.Logger, cookieSecure bool) *Handler {
 	return &Handler{
-		service: s,
-		logger:  log,
+		service:      s,
+		logger:       log,
+		cookieSecure: cookieSecure,
 	}
 }
 
@@ -67,7 +70,14 @@ func (h *Handler) Register(w http.ResponseWriter, r *http.Request) {
 	user, err := h.service.Register(r.Context(), req.Email, req.Password)
 	if err != nil {
 		log.Error("user registration failed", "error", err)
-		utils.WriteError(w, http.StatusInternalServerError, "something went wrong")
+		switch {
+		case errors.Is(err, ErrAuthInput), errors.Is(err, ErrPasswordTooShort):
+			utils.WriteError(w, http.StatusBadRequest, err.Error())
+		case errors.Is(err, ErrEmailAlreadyExists):
+			utils.WriteError(w, http.StatusConflict, ErrEmailAlreadyExists.Error())
+		default:
+			utils.WriteError(w, http.StatusInternalServerError, "something went wrong")
+		}
 		return
 	}
 
@@ -134,7 +144,7 @@ func (h *Handler) Login(w http.ResponseWriter, r *http.Request) {
 		Value:    refreshToken,
 		Path:     "/",
 		HttpOnly: true,
-		Secure:   true, // true in production (https)
+		Secure:   h.cookieSecure,
 		SameSite: http.SameSiteLaxMode,
 		Expires:  expiry,
 	})
@@ -170,8 +180,8 @@ func (h *Handler) Refresh(w http.ResponseWriter, r *http.Request) {
 			Name:     "refresh_token",
 			Value:    "",
 			Path:     "/",
-			HttpOnly: false,
-			Secure:   true,
+			HttpOnly: true,
+			Secure:   h.cookieSecure,
 			Expires:  time.Unix(0, 0),
 		})
 
@@ -183,8 +193,8 @@ func (h *Handler) Refresh(w http.ResponseWriter, r *http.Request) {
 		Name:     "refresh_token",
 		Value:    newRefreshToken,
 		Path:     "/",
-		HttpOnly: false, // true for production
-		Secure:   true,
+		HttpOnly: true,
+		Secure:   h.cookieSecure,
 		SameSite: http.SameSiteLaxMode,
 		Expires:  time.Now().Add(7 * 24 * time.Hour),
 	})
@@ -228,8 +238,8 @@ func (h *Handler) Logout(w http.ResponseWriter, r *http.Request) {
 		Name:     "refresh_token",
 		Value:    "",
 		Path:     "/",
-		HttpOnly: false, // true for production
-		Secure:   true,
+		HttpOnly: true,
+		Secure:   h.cookieSecure,
 		SameSite: http.SameSiteLaxMode,
 		Expires:  time.Unix(0, 0),
 	})

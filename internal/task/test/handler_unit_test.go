@@ -9,6 +9,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/akhilr007/tasks/internal/auth"
 	"github.com/akhilr007/tasks/internal/task"
 	chi "github.com/go-chi/chi/v5"
 )
@@ -20,31 +21,31 @@ import (
 //
 
 type MockStore struct {
-	GetAllFunc  func(ctx context.Context) ([]task.Task, error)
-	GetByIDFunc func(ctx context.Context, id int) (task.Task, error)
-	CreateFunc  func(ctx context.Context, title string) (task.Task, error)
-	UpdateFunc  func(ctx context.Context, id int, title *string, done *bool) (task.Task, error)
-	DeleteFunc  func(ctx context.Context, id int) error
+	GetAllFunc  func(ctx context.Context, userID int) ([]task.Task, error)
+	GetByIDFunc func(ctx context.Context, id, userID int) (task.Task, error)
+	CreateFunc  func(ctx context.Context, userID int, title string) (task.Task, error)
+	UpdateFunc  func(ctx context.Context, id, userID int, title *string, done *bool) (task.Task, error)
+	DeleteFunc  func(ctx context.Context, id, userID int) error
 }
 
-func (m *MockStore) GetAll(ctx context.Context) ([]task.Task, error) {
-	return m.GetAllFunc(ctx)
+func (m *MockStore) GetAll(ctx context.Context, userID int) ([]task.Task, error) {
+	return m.GetAllFunc(ctx, userID)
 }
 
-func (m *MockStore) GetByID(ctx context.Context, id int) (task.Task, error) {
-	return m.GetByIDFunc(ctx, id)
+func (m *MockStore) GetByID(ctx context.Context, id, userID int) (task.Task, error) {
+	return m.GetByIDFunc(ctx, id, userID)
 }
 
-func (m *MockStore) Create(ctx context.Context, title string) (task.Task, error) {
-	return m.CreateFunc(ctx, title)
+func (m *MockStore) Create(ctx context.Context, userID int, title string) (task.Task, error) {
+	return m.CreateFunc(ctx, userID, title)
 }
 
-func (m *MockStore) Update(ctx context.Context, id int, title *string, done *bool) (task.Task, error) {
-	return m.UpdateFunc(ctx, id, title, done)
+func (m *MockStore) Update(ctx context.Context, id, userID int, title *string, done *bool) (task.Task, error) {
+	return m.UpdateFunc(ctx, id, userID, title, done)
 }
 
-func (m *MockStore) Delete(ctx context.Context, id int) error {
-	return m.DeleteFunc(ctx, id)
+func (m *MockStore) Delete(ctx context.Context, id, userID int) error {
+	return m.DeleteFunc(ctx, id, userID)
 }
 
 //
@@ -69,6 +70,8 @@ func runRequest(t *testing.T, handler *task.Handler, method, url, body string) *
 	})
 
 	req := httptest.NewRequest(method, url, strings.NewReader(body))
+	ctx := context.WithValue(req.Context(), auth.UserIDKey, 1)
+	req = req.WithContext(ctx)
 	req.Header.Set("Content-Type", "application/json")
 
 	rr := httptest.NewRecorder()
@@ -108,8 +111,8 @@ func TestHandleCreateTask(t *testing.T) {
 			body: `{"title":"task"}`,
 			mock: func() *MockStore {
 				return &MockStore{
-					CreateFunc: func(ctx context.Context, title string) (task.Task, error) {
-						return task.Task{ID: 1, Title: title}, nil
+					CreateFunc: func(ctx context.Context, userID int, title string) (task.Task, error) {
+						return task.Task{ID: 1, UserID: userID, Title: title}, nil
 					},
 				}
 			},
@@ -134,7 +137,7 @@ func TestHandleCreateTask(t *testing.T) {
 			body: `{"title":"task"}`,
 			mock: func() *MockStore {
 				return &MockStore{
-					CreateFunc: func(ctx context.Context, title string) (task.Task, error) {
+					CreateFunc: func(ctx context.Context, userID int, title string) (task.Task, error) {
 						return task.Task{}, errors.New("db error")
 					},
 				}
@@ -189,8 +192,8 @@ func TestHandleGetTaskByID(t *testing.T) {
 			url:  "/tasks/1",
 			mock: func() *MockStore {
 				return &MockStore{
-					GetByIDFunc: func(ctx context.Context, id int) (task.Task, error) {
-						return task.Task{ID: id, Title: "task"}, nil
+					GetByIDFunc: func(ctx context.Context, id, userID int) (task.Task, error) {
+						return task.Task{ID: id, UserID: userID, Title: "task"}, nil
 					},
 				}
 			},
@@ -201,7 +204,7 @@ func TestHandleGetTaskByID(t *testing.T) {
 			url:  "/tasks/1",
 			mock: func() *MockStore {
 				return &MockStore{
-					GetByIDFunc: func(ctx context.Context, id int) (task.Task, error) {
+					GetByIDFunc: func(ctx context.Context, id, userID int) (task.Task, error) {
 						return task.Task{}, task.ErrNotFound
 					},
 				}
@@ -221,7 +224,7 @@ func TestHandleGetTaskByID(t *testing.T) {
 			url:  "/tasks/1",
 			mock: func() *MockStore {
 				return &MockStore{
-					GetByIDFunc: func(ctx context.Context, id int) (task.Task, error) {
+					GetByIDFunc: func(ctx context.Context, id, userID int) (task.Task, error) {
 						return task.Task{}, errors.New("db error")
 					},
 				}
@@ -266,7 +269,7 @@ func TestHandleUpdateTask(t *testing.T) {
 			body: `{"title":"updated","done":true}`,
 			mock: func() *MockStore {
 				return &MockStore{
-					UpdateFunc: func(ctx context.Context, id int, title *string, done *bool) (task.Task, error) {
+					UpdateFunc: func(ctx context.Context, id, userID int, title *string, done *bool) (task.Task, error) {
 						var t string
 						var d bool
 						if title != nil {
@@ -275,7 +278,7 @@ func TestHandleUpdateTask(t *testing.T) {
 						if done != nil {
 							d = *done
 						}
-						return task.Task{ID: id, Title: t, Done: d}, nil
+						return task.Task{ID: id, UserID: userID, Title: t, Done: d}, nil
 					},
 				}
 			},
@@ -295,7 +298,7 @@ func TestHandleUpdateTask(t *testing.T) {
 			body: `{"title":"x"}`,
 			mock: func() *MockStore {
 				return &MockStore{
-					UpdateFunc: func(ctx context.Context, id int, title *string, done *bool) (task.Task, error) {
+					UpdateFunc: func(ctx context.Context, id, userID int, title *string, done *bool) (task.Task, error) {
 						return task.Task{}, task.ErrNotFound
 					},
 				}
@@ -337,7 +340,7 @@ func TestHandleDeleteTask(t *testing.T) {
 			url:  "/tasks/1",
 			mock: func() *MockStore {
 				return &MockStore{
-					DeleteFunc: func(ctx context.Context, id int) error {
+					DeleteFunc: func(ctx context.Context, id, userID int) error {
 						return nil
 					},
 				}
@@ -349,7 +352,7 @@ func TestHandleDeleteTask(t *testing.T) {
 			url:  "/tasks/1",
 			mock: func() *MockStore {
 				return &MockStore{
-					DeleteFunc: func(ctx context.Context, id int) error {
+					DeleteFunc: func(ctx context.Context, id, userID int) error {
 						return task.ErrNotFound
 					},
 				}

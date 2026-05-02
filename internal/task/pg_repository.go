@@ -21,11 +21,17 @@ func NewPGRepository(db db.DBTX) *PGRepository {
 	}
 }
 
-func (r *PGRepository) GetAll(ctx context.Context) ([]Task, error) {
+func (r *PGRepository) GetAll(ctx context.Context, userID int) ([]Task, error) {
 	ctx, cancel := context.WithTimeout(ctx, 3*time.Second)
 	defer cancel()
 
-	rows, err := r.db.Query(ctx, `SELECT id, title, done, created_at FROM tasks ORDER BY created_at DESC`)
+	rows, err := r.db.Query(ctx,
+		`SELECT id, title, user_id, done, created_at
+		FROM tasks
+		WHERE user_id=$1
+		ORDER BY created_at DESC`,
+		userID,
+	)
 	if err != nil {
 		return nil, err
 	}
@@ -35,7 +41,7 @@ func (r *PGRepository) GetAll(ctx context.Context) ([]Task, error) {
 
 	for rows.Next() {
 		var t Task
-		if err := rows.Scan(&t.ID, &t.Title, &t.Done, &t.CreatedAt); err != nil {
+		if err := rows.Scan(&t.ID, &t.Title, &t.UserID, &t.Done, &t.CreatedAt); err != nil {
 			return nil, err
 		}
 		tasks = append(tasks, t)
@@ -48,14 +54,15 @@ func (r *PGRepository) GetAll(ctx context.Context) ([]Task, error) {
 	return tasks, nil
 }
 
-func (r *PGRepository) GetByID(ctx context.Context, id int) (Task, error) {
+func (r *PGRepository) GetByID(ctx context.Context, id, userID int) (Task, error) {
 	ctx, cancel := context.WithTimeout(ctx, 3*time.Second)
 	defer cancel()
 
 	var t Task
 	err := r.db.QueryRow(ctx,
-		`SELECT id, title, done, created_at FROM tasks WHERE id = $1`,
-		id).Scan(&t.ID, &t.Title, &t.Done, &t.CreatedAt)
+		`SELECT id, title, user_id, done, created_at FROM tasks WHERE id = $1 AND user_id=$2`,
+		id, userID,
+	).Scan(&t.ID, &t.Title, &t.UserID, &t.Done, &t.CreatedAt)
 
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
@@ -67,23 +74,24 @@ func (r *PGRepository) GetByID(ctx context.Context, id int) (Task, error) {
 	return t, nil
 }
 
-func (r *PGRepository) Create(ctx context.Context, title string) (Task, error) {
+func (r *PGRepository) Create(ctx context.Context, userID int, title string) (Task, error) {
 	ctx, cancel := context.WithTimeout(ctx, 3*time.Second)
 	defer cancel()
 
 	title = strings.TrimSpace(title)
 
 	if title == "" {
-		return Task{}, errors.New("title cannot be empty")
+		return Task{}, ErrInvalidTitle
 	}
 
 	var t Task
 
 	err := r.db.QueryRow(ctx,
-		`INSERT INTO tasks (title)
-		VALUES ($1)
-		RETURNING id, title, done, created_at`, title,
-	).Scan(&t.ID, &t.Title, &t.Done, &t.CreatedAt)
+		`INSERT INTO tasks (title, user_id)
+		VALUES ($1, $2)
+		RETURNING id, title, user_id, done, created_at`,
+		title, userID,
+	).Scan(&t.ID, &t.Title, &t.UserID, &t.Done, &t.CreatedAt)
 
 	if err != nil {
 		return Task{}, fmt.Errorf("create task: %w", err)
@@ -92,12 +100,15 @@ func (r *PGRepository) Create(ctx context.Context, title string) (Task, error) {
 	return t, nil
 }
 
-func (r *PGRepository) Update(ctx context.Context, id int, title *string, done *bool) (Task, error) {
+func (r *PGRepository) Update(ctx context.Context, id int, userID int, title *string, done *bool) (Task, error) {
 	ctx, cancel := context.WithTimeout(ctx, 3*time.Second)
 	defer cancel()
 
 	if title != nil {
 		trimmed := strings.TrimSpace(*title)
+		if trimmed == "" {
+			return Task{}, ErrInvalidTitle
+		}
 		title = &trimmed
 	}
 
@@ -106,10 +117,10 @@ func (r *PGRepository) Update(ctx context.Context, id int, title *string, done *
 		`UPDATE tasks SET
 			title = COALESCE($1, title),
 			done = COALESCE($2, done)
-		WHERE id = $3
-		RETURNING id, title, done, created_at`,
-		title, done, id,
-	).Scan(&t.ID, &t.Title, &t.Done, &t.CreatedAt)
+		WHERE id = $3 AND user_id = $4
+		RETURNING id, title, user_id, done, created_at`,
+		title, done, id, userID,
+	).Scan(&t.ID, &t.Title, &t.UserID, &t.Done, &t.CreatedAt)
 
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
@@ -121,13 +132,13 @@ func (r *PGRepository) Update(ctx context.Context, id int, title *string, done *
 	return t, nil
 }
 
-func (r *PGRepository) Delete(ctx context.Context, id int) error {
+func (r *PGRepository) Delete(ctx context.Context, id int, userID int) error {
 	ctx, cancel := context.WithTimeout(ctx, 3*time.Second)
 	defer cancel()
 
 	cmd, err := r.db.Exec(ctx,
-		`DELETE FROM tasks WHERE id = $1`,
-		id,
+		`DELETE FROM tasks WHERE id = $1 AND user_id = $2`,
+		id, userID,
 	)
 	if err != nil {
 		return fmt.Errorf("delete task: %w", err)

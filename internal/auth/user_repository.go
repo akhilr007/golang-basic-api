@@ -5,7 +5,10 @@ import (
 	"errors"
 )
 
-var ErrUserNotFound = errors.New("user not found")
+var (
+	ErrUserNotFound       = errors.New("user not found")
+	ErrEmailAlreadyExists = errors.New("email already exists")
+)
 
 type UserRepository interface {
 	CreateUser(ctx context.Context, email, passwordHash string) (User, error)

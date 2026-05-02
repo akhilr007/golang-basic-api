@@ -18,28 +18,35 @@ func NewService(repo Repository, logger *slog.Logger) *Service {
 	}
 }
 
-func (s *Service) GetAll(ctx context.Context) ([]Task, error) {
-	return s.repo.GetAll(ctx)
+func (s *Service) GetAll(ctx context.Context, userID int) ([]Task, error) {
+	return s.repo.GetAll(ctx, userID)
 }
 
-func (s *Service) GetByID(ctx context.Context, id int) (Task, error) {
-	return s.repo.GetByID(ctx, id)
+func (s *Service) GetByID(ctx context.Context, id, userID int) (Task, error) {
+	return s.repo.GetByID(ctx, id, userID)
 }
 
-func (s *Service) Create(ctx context.Context, title string) (Task, error) {
+func (s *Service) Create(ctx context.Context, userID int, title string) (Task, error) {
 	title = strings.TrimSpace(title)
-	return s.repo.Create(ctx, title)
+	if title == "" {
+		return Task{}, ErrInvalidTitle
+	}
+
+	return s.repo.Create(ctx, userID, title)
 }
 
-func (s *Service) Update(ctx context.Context, id int, title *string, done *bool) (Task, error) {
+func (s *Service) Update(ctx context.Context, id int, userID int, title *string, done *bool) (Task, error) {
 	if title != nil {
 		trimmed := strings.TrimSpace(*title)
+		if trimmed == "" {
+			return Task{}, ErrInvalidTitle
+		}
 		title = &trimmed
 	}
 
-	return s.repo.Update(ctx, id, title, done)
+	return s.repo.Update(ctx, id, userID, title, done)
 }
 
-func (s *Service) Delete(ctx context.Context, id int) error {
-	return s.repo.Delete(ctx, id)
+func (s *Service) Delete(ctx context.Context, id, userID int) error {
+	return s.repo.Delete(ctx, id, userID)
 }

@@ -8,7 +8,16 @@ import (
 	"github.com/golang-jwt/jwt/v5"
 )
 
-var jwtSecret = []byte("super-secret-key")
+var jwtSecret []byte
+
+func ConfigureJWTSecret(secret string) error {
+	if len(secret) < 32 {
+		return fmt.Errorf("jwt secret must be at least 32 characters")
+	}
+
+	jwtSecret = []byte(secret)
+	return nil
+}
 
 type Claims struct {
 	UserID int `json:"user_id"`
@@ -16,6 +25,10 @@ type Claims struct {
 }
 
 func GenerateAccessToken(userID int) (string, error) {
+
+	if len(jwtSecret) == 0 {
+		return "", fmt.Errorf("jwt secret is not configured")
+	}
 
 	now := time.Now()
 
@@ -40,6 +53,10 @@ func GenerateAccessToken(userID int) (string, error) {
 }
 
 func ValidateToken(tokenStr string) (*Claims, error) {
+	if len(jwtSecret) == 0 {
+		return nil, fmt.Errorf("jwt secret is not configured")
+	}
+
 	token, err := jwt.ParseWithClaims(tokenStr, &Claims{}, func(t *jwt.Token) (any, error) {
 		if _, ok := t.Method.(*jwt.SigningMethodHMAC); !ok {
 			return nil, fmt.Errorf("unexpected signing method: %v", t.Header["alg"])
