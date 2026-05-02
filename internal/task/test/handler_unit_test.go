@@ -11,6 +11,7 @@ import (
 
 	"github.com/akhilr007/tasks/internal/auth"
 	"github.com/akhilr007/tasks/internal/task"
+	"github.com/akhilr007/tasks/internal/utils"
 	chi "github.com/go-chi/chi/v5"
 )
 
@@ -21,15 +22,15 @@ import (
 //
 
 type MockStore struct {
-	GetAllFunc  func(ctx context.Context, userID int) ([]task.Task, error)
+	GetAllFunc  func(ctx context.Context, userID int, p utils.Pagination) ([]task.Task, bool, error)
 	GetByIDFunc func(ctx context.Context, id, userID int) (task.Task, error)
 	CreateFunc  func(ctx context.Context, userID int, title string) (task.Task, error)
 	UpdateFunc  func(ctx context.Context, id, userID int, title *string, done *bool) (task.Task, error)
 	DeleteFunc  func(ctx context.Context, id, userID int) error
 }
 
-func (m *MockStore) GetAll(ctx context.Context, userID int) ([]task.Task, error) {
-	return m.GetAllFunc(ctx, userID)
+func (m *MockStore) GetAll(ctx context.Context, userID int, p utils.Pagination) ([]task.Task, bool, error) {
+	return m.GetAllFunc(ctx, userID, p)
 }
 
 func (m *MockStore) GetByID(ctx context.Context, id, userID int) (task.Task, error) {
@@ -88,6 +89,92 @@ func decodeBody(t *testing.T, rr *httptest.ResponseRecorder) map[string]any {
 		t.Fatalf("failed to decode response: %v", err)
 	}
 	return resp
+}
+
+//
+// ===============================
+// GET ALL TASKS
+// ===============================
+//
+
+func TestHandleGetAllTasks(t *testing.T) {
+	t.Parallel()
+
+	t.Run("success with next page", func(t *testing.T) {
+		handler := newHandlerWithMock(&MockStore{
+			GetAllFunc: func(ctx context.Context, userID int, p utils.Pagination) ([]task.Task, bool, error) {
+				if userID != 1 {
+					t.Fatalf("expected userID 1, got %d", userID)
+				}
+				if p.Limit != 2 || p.Offset != 1 {
+					t.Fatalf("expected pagination limit=2 offset=1, got limit=%d offset=%d", p.Limit, p.Offset)
+				}
+				return []task.Task{
+					{ID: 3, UserID: userID, Title: "third"},
+					{ID: 2, UserID: userID, Title: "second"},
+				}, true, nil
+			},
+		})
+
+		rr := runRequest(t, handler, http.MethodGet, "/tasks?limit=2&offset=1", "")
+		if rr.Code != http.StatusOK {
+			t.Fatalf("expected %d, got %d", http.StatusOK, rr.Code)
+		}
+
+		resp := decodeBody(t, rr)
+		page := resp["data"].(map[string]any)
+		tasks := page["data"].([]any)
+		if len(tasks) != 2 {
+			t.Fatalf("expected 2 tasks, got %d", len(tasks))
+		}
+
+		meta := page["meta"].(map[string]any)
+		if meta["limit"] != float64(2) || meta["offset"] != float64(1) {
+			t.Fatalf("unexpected pagination meta: %#v", meta)
+		}
+		if meta["next_offset"] != float64(3) || meta["prev_offset"] != float64(0) {
+			t.Fatalf("unexpected navigation meta: %#v", meta)
+		}
+	})
+
+	t.Run("success without next page", func(t *testing.T) {
+		handler := newHandlerWithMock(&MockStore{
+			GetAllFunc: func(ctx context.Context, userID int, p utils.Pagination) ([]task.Task, bool, error) {
+				if p.Limit != 10 || p.Offset != 0 {
+					t.Fatalf("expected default pagination, got limit=%d offset=%d", p.Limit, p.Offset)
+				}
+				return []task.Task{{ID: 1, UserID: userID, Title: "only"}}, false, nil
+			},
+		})
+
+		rr := runRequest(t, handler, http.MethodGet, "/tasks", "")
+		if rr.Code != http.StatusOK {
+			t.Fatalf("expected %d, got %d", http.StatusOK, rr.Code)
+		}
+
+		resp := decodeBody(t, rr)
+		page := resp["data"].(map[string]any)
+		meta := page["meta"].(map[string]any)
+		if meta["next_offset"] != float64(-1) {
+			t.Fatalf("expected no next page, got meta %#v", meta)
+		}
+		if _, ok := meta["prev_offset"]; ok {
+			t.Fatalf("expected prev_offset to be omitted, got meta %#v", meta)
+		}
+	})
+
+	t.Run("repository error", func(t *testing.T) {
+		handler := newHandlerWithMock(&MockStore{
+			GetAllFunc: func(ctx context.Context, userID int, p utils.Pagination) ([]task.Task, bool, error) {
+				return nil, false, errors.New("db error")
+			},
+		})
+
+		rr := runRequest(t, handler, http.MethodGet, "/tasks", "")
+		if rr.Code != http.StatusInternalServerError {
+			t.Fatalf("expected %d, got %d", http.StatusInternalServerError, rr.Code)
+		}
+	})
 }
 
 //

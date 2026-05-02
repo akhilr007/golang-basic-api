@@ -4,6 +4,8 @@ import (
 	"context"
 	"log/slog"
 	"strings"
+
+	"github.com/akhilr007/tasks/internal/utils"
 )
 
 type Service struct {
@@ -18,8 +20,8 @@ func NewService(repo Repository, logger *slog.Logger) *Service {
 	}
 }
 
-func (s *Service) GetAll(ctx context.Context, userID int) ([]Task, error) {
-	return s.repo.GetAll(ctx, userID)
+func (s *Service) GetAll(ctx context.Context, userID int, p utils.Pagination) ([]Task, bool, error) {
+	return s.repo.GetAll(ctx, userID, p)
 }
 
 func (s *Service) GetByID(ctx context.Context, id, userID int) (Task, error) {

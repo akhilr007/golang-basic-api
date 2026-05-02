@@ -2,9 +2,12 @@ package task
 
 import (
 	"context"
+	"sort"
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/akhilr007/tasks/internal/utils"
 )
 
 type MemoryRepository struct {
@@ -20,7 +23,7 @@ func NewMemoryRepository() *MemoryRepository {
 	}
 }
 
-func (r *MemoryRepository) GetAll(ctx context.Context, userID int) ([]Task, error) {
+func (r *MemoryRepository) GetAll(ctx context.Context, userID int, p utils.Pagination) ([]Task, bool, error) {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 
@@ -31,7 +34,25 @@ func (r *MemoryRepository) GetAll(ctx context.Context, userID int) ([]Task, erro
 		}
 		tasks = append(tasks, t)
 	}
-	return tasks, nil
+
+	sort.Slice(tasks, func(i, j int) bool {
+		if !tasks[i].CreatedAt.Equal(tasks[j].CreatedAt) {
+			return tasks[i].CreatedAt.After(tasks[j].CreatedAt)
+		}
+		return tasks[i].ID > tasks[j].ID
+	})
+
+	if p.Offset >= len(tasks) {
+		return []Task{}, false, nil
+	}
+
+	end := p.Offset + p.Limit
+	hasMore := len(tasks) > end
+	if end > len(tasks) {
+		end = len(tasks)
+	}
+
+	return tasks[p.Offset:end], hasMore, nil
 }
 
 func (r *MemoryRepository) GetByID(ctx context.Context, id, userID int) (Task, error) {

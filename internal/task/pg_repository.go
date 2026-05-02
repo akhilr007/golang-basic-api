@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/akhilr007/tasks/internal/db"
+	"github.com/akhilr007/tasks/internal/utils"
 	"github.com/jackc/pgx/v5"
 )
 
@@ -21,37 +22,44 @@ func NewPGRepository(db db.DBTX) *PGRepository {
 	}
 }
 
-func (r *PGRepository) GetAll(ctx context.Context, userID int) ([]Task, error) {
+func (r *PGRepository) GetAll(ctx context.Context, userID int, p utils.Pagination) ([]Task, bool, error) {
 	ctx, cancel := context.WithTimeout(ctx, 3*time.Second)
 	defer cancel()
 
+	fetchLimit := p.Limit + 1
 	rows, err := r.db.Query(ctx,
 		`SELECT id, title, user_id, done, created_at
 		FROM tasks
 		WHERE user_id=$1
-		ORDER BY created_at DESC`,
-		userID,
+		ORDER BY created_at DESC, id DESC
+		LIMIT $2 OFFSET $3`,
+		userID, fetchLimit, p.Offset,
 	)
 	if err != nil {
-		return nil, err
+		return nil, false, err
 	}
 	defer rows.Close()
 
-	var tasks []Task
+	tasks := make([]Task, 0, fetchLimit)
 
 	for rows.Next() {
 		var t Task
 		if err := rows.Scan(&t.ID, &t.Title, &t.UserID, &t.Done, &t.CreatedAt); err != nil {
-			return nil, err
+			return nil, false, err
 		}
 		tasks = append(tasks, t)
 	}
 
 	if err := rows.Err(); err != nil {
-		return nil, err
+		return nil, false, err
 	}
 
-	return tasks, nil
+	hasMore := len(tasks) > p.Limit
+	if hasMore {
+		tasks = tasks[:p.Limit]
+	}
+
+	return tasks, hasMore, nil
 }
 
 func (r *PGRepository) GetByID(ctx context.Context, id, userID int) (Task, error) {

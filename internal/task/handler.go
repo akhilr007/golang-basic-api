@@ -43,19 +43,27 @@ func (h *Handler) HandleGetAllTasks(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	tasks, err := h.service.GetAll(r.Context(), userID)
+	p := utils.ParsePagination(r)
+
+	tasks, hasMore, err := h.service.GetAll(r.Context(), userID, p)
 	if err != nil {
 		log.Error("failed to fetch tasks", "error", err)
 		utils.WriteError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
 
+	meta := utils.BuildMeta(p, hasMore)
 	if tasks == nil {
 		tasks = []Task{}
 	}
 
+	resp := utils.PaginatedResponse[Task]{
+		Data: tasks,
+		Meta: meta,
+	}
+
 	log.Info("fetched tasks", "count", len(tasks))
-	utils.WriteSuccess(w, http.StatusOK, tasks)
+	utils.WriteSuccess(w, http.StatusOK, resp)
 }
 
 func (h *Handler) HandleCreateTask(w http.ResponseWriter, r *http.Request) {
