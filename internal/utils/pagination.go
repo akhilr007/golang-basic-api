@@ -7,10 +7,11 @@ import (
 
 type Pagination struct {
 	Limit  int
+	Page   int
 	Offset int
 }
 
-func NewPagination(limit, offset int) Pagination {
+func NewPagination(page, limit int) Pagination {
 	const (
 		defaultLimit = 10
 		maxLimit     = 100
@@ -19,17 +20,19 @@ func NewPagination(limit, offset int) Pagination {
 	if limit <= 0 {
 		limit = defaultLimit
 	}
-
 	if limit > maxLimit {
 		limit = maxLimit
 	}
 
-	if offset < 0 {
-		offset = 0
+	if page <= 0 {
+		page = 1
 	}
+
+	offset := (page - 1) * limit
 
 	return Pagination{
 		Limit:  limit,
+		Page:   page,
 		Offset: offset,
 	}
 }
@@ -37,40 +40,38 @@ func NewPagination(limit, offset int) Pagination {
 func ParsePagination(r *http.Request) Pagination {
 	q := r.URL.Query()
 
+	page, _ := strconv.Atoi(q.Get("page"))
 	limit, _ := strconv.Atoi(q.Get("limit"))
-	offset, _ := strconv.Atoi(q.Get("offset"))
 
-	return NewPagination(limit, offset)
+	return NewPagination(page, limit)
 }
 
 type PageMeta struct {
-	Limit      int  `json:"limit"`
-	Offset     int  `json:"offset"`
-	NextOffset int  `json:"next_offset"`
-	PrevOffset *int `json:"prev_offset,omitempty"`
+	Page  int `json:"page"`
+	Limit int `json:"limit"`
+
+	NextPage *int `json:"next_page,omitempty"`
+	PrevPage *int `json:"prev_page,omitempty"`
 }
 
 func BuildMeta(p Pagination, hasMore bool) PageMeta {
-	next := p.Offset + p.Limit
+	var next *int
+	if hasMore {
+		n := p.Page + 1
+		next = &n
+	}
 
 	var prev *int
-	if p.Offset > 0 {
-		pv := p.Offset - p.Limit
-		if pv < 0 {
-			pv = 0
-		}
+	if p.Page > 1 {
+		pv := p.Page - 1
 		prev = &pv
 	}
 
-	if !hasMore {
-		next = -1
-	}
-
 	return PageMeta{
-		Limit:      p.Limit,
-		Offset:     p.Offset,
-		NextOffset: next,
-		PrevOffset: prev,
+		Page:     p.Page,
+		Limit:    p.Limit,
+		NextPage: next,
+		PrevPage: prev,
 	}
 }
 
